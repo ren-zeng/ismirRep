@@ -1,6 +1,6 @@
 cabal-version: 2.2
 
--- This file has been generated from package.yaml by hpack version 0.35.0.
+-- This file has been generated from package.yaml by hpack version 0.37.0.
 --
 -- see: https://github.com/sol/hpack
 
@@ -31,8 +31,17 @@ library
       Grammar
       HelloMonadBayes
       Meta
+      ParsingTemplateGrammar
       PCFG
       Preliminaries.Viz
+      Preprocessing.JazzGrammar
+      Preprocessing.Main
+      Preprocessing.MusicTheory
+      Preprocessing.TreeBankParser
+      ProbTemplate
+      SemiringParsing
+      SLG
+      TemplateGrammar
   other-modules:
       Paths_ismirRep
   autogen-modules:
@@ -42,17 +51,25 @@ library
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
       HList
+    , MemoTrie
+    , aeson
     , base >=4.7 && <5
     , containers
+    , data-fix
     , diagrams-lib
     , extra
     , generics-sop
     , ghc-typelits-natnormalise
+    , megaparsec
     , mmorph
     , monad-bayes
+    , musicology-pitch
     , random
+    , recursion-schemes
+    , semirings
     , singleton-nats
     , singletons
+    , split
     , statistics
     , text
     , transformers
@@ -71,18 +88,26 @@ executable ismirRep-exe
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HList
+    , MemoTrie
+    , aeson
     , base >=4.7 && <5
     , containers
+    , data-fix
     , diagrams-lib
     , extra
     , generics-sop
     , ghc-typelits-natnormalise
     , ismirRep
+    , megaparsec
     , mmorph
     , monad-bayes
+    , musicology-pitch
     , random
+    , recursion-schemes
+    , semirings
     , singleton-nats
     , singletons
+    , split
     , statistics
     , text
     , transformers
@@ -102,18 +127,26 @@ test-suite ismirRep-test
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HList
+    , MemoTrie
+    , aeson
     , base >=4.7 && <5
     , containers
+    , data-fix
     , diagrams-lib
     , extra
     , generics-sop
     , ghc-typelits-natnormalise
     , ismirRep
+    , megaparsec
     , mmorph
     , monad-bayes
+    , musicology-pitch
     , random
+    , recursion-schemes
+    , semirings
     , singleton-nats
     , singletons
+    , split
     , statistics
     , text
     , transformers

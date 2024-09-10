@@ -38,6 +38,17 @@ dependencies:
 - transformers
 # - overloaded
 - diagrams-lib
+# - lazyppl
+- semirings
+- MemoTrie
+- musicology-pitch
+- aeson
+- megaparsec
+- recursion-schemes
+- data-fix
+- split
+
+
 ghc-options:
 - -Wall
 - -Wcompat

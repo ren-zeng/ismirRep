@@ -1,81 +1,90 @@
-{-# LANGUAGE PartialTypeSignatures #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
+
 module CYKParser where
-import Data.Tree
-import Grammar
-import Data.List (inits, tails)
+
 import Control.Arrow
-import Data.List.NonEmpty (nonEmpty)
+import Data.List (inits, tails)
 import Data.List.Extra (notNull)
+import Data.List.NonEmpty (nonEmpty)
+import Data.MemoTrie
+import Data.Semiring
+import Data.Tree
+import GHC.Generics
+import Grammar
 
-data ParseTree a b = Leaf a | Branch a b [ParseTree a b] 
-    deriving (Show,Eq)
+-- >>>  length (parseCYK $ Right . uncurry TChord <$> [(V,V`Of`I),(V,I), (I,I)])
+-- 1
+deriving instance Generic (T (Chord x y))
 
-ruleTree :: ParseTree a b -> Tree (Maybe b)
-ruleTree = \case 
-    Leaf x -> Node Nothing [] 
-    Branch _ r ts -> Node (Just r) (ruleTree <$> ts)
+deriving instance Generic (Numeral)
 
-nodeVal :: ParseTree a b -> a
-nodeVal = \case 
-    Leaf x -> x
-    Branch x _ _ -> x
+instance HasTrie (T (Chord x y)) where
+  newtype T (Chord x y) :->: b = ChordTrie {unChordTrie :: Reg (T (Chord x y)) :->: b}
+  trie = trieGeneric ChordTrie
+  untrie = untrieGeneric unChordTrie
+  enumerate = enumerateGeneric unChordTrie
 
--- >>> length  (parseCYK $ Right . uncurry TChord <$> [(I,I),(V,I),(I,I),(I,I),(I,I)])
--- 9
+instance HasTrie (Numeral) where
+  newtype (Numeral) :->: b = NumeralTrie {unNumeralTrie :: Reg (Numeral) :->: b}
+  trie = trieGeneric NumeralTrie
+  untrie = untrieGeneric unNumeralTrie
+  enumerate = enumerateGeneric unNumeralTrie
 
--- >>> mergeRule $ Left <$> [NTExpr,NTExpr]
--- [(NTExpr,RPlus),(NTExpr,RMult)]
-parseCYK :: _ => [Symbol a] -> [ParseTree (Symbol a) (ProdRule a)]
-parseCYK [] = []
-parseCYK sur = 
-    case possibleMerges sur of 
-        [] -> do
-            (l,r) <- splits sur
-            treeL <- parseCYK l
-            treeR <- parseCYK r
-            mergePTree [treeL,treeR]
-        merges -> do
-            (root,p) <- merges
-            return $ Branch (Left root) p (Leaf <$> sur)
+parseCYK' ::
+  (Grammar a) =>
+  ([T a] -> [ParseTree (NT a) (ProdRule a) (T a)]) ->
+  ([T a] -> [ParseTree (NT a) (ProdRule a) (T a)])
+parseCYK' oneStep [] = []
+parseCYK' oneStep sur =
+  case possibleMerges (Left <$> sur) of
+    [] -> do
+      (l, r) <- splits sur
+      treeL <- oneStep l
+      treeR <- oneStep r
+      mergePTree [treeL, treeR]
+    merges -> do
+      (root, p) <- merges
+      return $ Branch root p (Leaf <$> sur)
 
-mergePTree :: _ => [ParseTree (Symbol a) (ProdRule a)] -> [ParseTree (Symbol a) (ProdRule a)]
-mergePTree xs = do 
-    (root,p) <- possibleMerges $ nodeVal <$> xs
-    return $ Branch (Left root) p xs
+directMerge :: (Grammar a) => [T a] -> [ParseTree (NT a) (ProdRule a) (T a)]
+directMerge sur = do
+  merges <- possibleMerges (Left <$> sur)
+  let (root, p) = merges
+  return $ Branch root p (Leaf <$> sur)
 
-mergeSymbols :: _ => [Symbol a] -> [ParseTree (Symbol a) (ProdRule a)]
-mergeSymbols xs = do 
-    (root,p) <- possibleMerges xs
-    return $ Branch (Left root) p (Leaf <$> xs)
+directMergeProb ::
+  (Grammar a) =>
+  (NT a -> ProdRule a -> Double) ->
+  [T a] ->
+  [(ParseTree (NT a) (ProdRule a) (T a), Double)]
+directMergeProb ruleProb sur = do
+  merges <- possibleMerges (Left <$> sur)
+  let (root, p) = merges
+  return $ (Branch root p (Leaf <$> sur), ruleProb root p)
 
-{-
-[a] -> PTree a b
-goal : [PTree a b] -> PTree a b
--}
+parseCYK ::
+  (HasTrie (T a), Grammar a) =>
+  [T a] ->
+  [ParseTree (NT a) (ProdRule a) (T a)]
+parseCYK = memoFix parseCYK'
 
-insertTree :: ParseTree a b -> ParseTree a b -> ParseTree a b 
-insertTree t (Leaf x) = t
-insertTree t (Branch x r ts) = Branch x r (zipWith insertTree [t] ts)
+topSymbol :: ParseTree b r a -> Either a b
+topSymbol = \case
+  Leaf x -> Left x
+  Branch x _ _ -> Right x
 
+mergePTree :: (_) => [ParseTree (NT a) (ProdRule a) (T a)] -> [ParseTree (NT a) (ProdRule a) (T a)]
+mergePTree xs = do
+  (root, p) <- possibleMerges $ topSymbol <$> xs
+  return $ Branch root p xs
 
 splits :: [a] -> [([a], [a])]
-splits xs = filter (\(a,b) -> notNull a && notNull b) $ zip (inits xs) (tails xs)
-
--- >>> splits [1,2]
--- [([1],[2])]
-
--- >>>  parseCYK [Right $ TString "x", Right $ TString "x"]
--- []
-
--- >>>  parseCYK [Left NTInt,Left NTInt]
--- [Branch (Left NTExpr) RPlus [Branch (Left NTExpr) RConst [Leaf (Left NTInt)],Branch (Left NTExpr) RConst [Leaf (Left NTInt)]],Branch (Left NTExpr) RMult [Branch (Left NTExpr) RConst [Leaf (Left NTInt)],Branch (Left NTExpr) RConst [Leaf (Left NTInt)]]]
-
-
-testListMonad xs  = do 
-    (l,r) <- splits xs 
-    return (l,r,r)
-
--- >>> testListMonad [1,2,3,4,5] 
--- [([1],[2,3,4,5],[2,3,4,5]),([1,2],[3,4,5],[3,4,5]),([1,2,3],[4,5],[4,5]),([1,2,3,4],[5],[5])]
+splits xs = filter (\(a, b) -> notNull a && notNull b) $ zip (inits xs) (tails xs)

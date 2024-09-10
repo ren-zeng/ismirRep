@@ -45,6 +45,14 @@ extra-deps:
 - brick-2.3.1@sha256:4c36e5d77dc360641a5aa9361949d981e4aecc7f1372c862e0b2451d614b5f5c,17394
 - HList-0.5.3.0@sha256:7166d99e8133cb6bffb66b748668f5be90cd76733f646553414f69052abebc84,7452
 - overloaded-0.3.1@sha256:d0216ece2fa26f245b28e9ae4619ebcf579e8ed09dcd092e5a754ba41e5cced5,6260
+- git: https://github.com/DCMLab/haskell-musicology.git
+  commit: 21d3be9b932239cb638f4538067f40399cc7b465
+  subdirs:
+  - musicology-core
+  - musicology-pitch
+# - git: https://github.com/lazyppl-team/lazyppl.git 
+#   commit: 7f4c3da9e0226781cc4ca5668fb83a00a384aeb0
+
 # extra-deps: []
 
 # Override default flag values for local packages and extra-deps

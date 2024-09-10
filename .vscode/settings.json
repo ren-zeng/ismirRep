@@ -1,5 +1,21 @@
 {
     "cSpell.enableFiletypes": [
         "!haskell"
-    ]
+    ],
+    "window.autoDetectColorScheme": false,
+    "window.density.editorTabHeight": "compact",
+    "editor.glyphMargin": false,
+    "editor.folding": true,
+    "scm.diffDecorationsGutterWidth": 3,
+    "editor.scrollbar.horizontal": "hidden",
+    "editor.scrollbar.horizontalScrollbarSize": 5,
+    "editor.scrollbar.ignoreHorizontalScrollbarInContentHeight": true,
+    "editor.scrollbar.scrollByPage": false,
+    "editor.scrollbar.verticalScrollbarSize": 5,
+    "editor.smoothScrolling": false,
+    "workbench.list.mouseWheelScrollSensitivity": 1,
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "editor.defaultFoldingRangeProvider": "haskell.haskell",
+    "editor.foldingStrategy": "auto"
 }

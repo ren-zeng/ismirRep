@@ -32,6 +32,32 @@ packages:
       size: 4476
   original:
     hackage: overloaded-0.3.1@sha256:d0216ece2fa26f245b28e9ae4619ebcf579e8ed09dcd092e5a754ba41e5cced5,6260
+- completed:
+    commit: 21d3be9b932239cb638f4538067f40399cc7b465
+    git: https://github.com/DCMLab/haskell-musicology.git
+    name: musicology-core
+    pantry-tree:
+      sha256: 3f728043567c737a0e60fdfe5ed3aebc5fabe964b284130b8b70f5a97995c05e
+      size: 397
+    subdir: musicology-core
+    version: 0.1.0.0
+  original:
+    commit: 21d3be9b932239cb638f4538067f40399cc7b465
+    git: https://github.com/DCMLab/haskell-musicology.git
+    subdir: musicology-core
+- completed:
+    commit: 21d3be9b932239cb638f4538067f40399cc7b465
+    git: https://github.com/DCMLab/haskell-musicology.git
+    name: musicology-pitch
+    pantry-tree:
+      sha256: 8ef523b13f42e95ab7b545e861d19ef18ee38d33a75ff3f088827a5f946f08c7
+      size: 802
+    subdir: musicology-pitch
+    version: 0.1.0.0
+  original:
+    commit: 21d3be9b932239cb638f4538067f40399cc7b465
+    git: https://github.com/DCMLab/haskell-musicology.git
+    subdir: musicology-pitch
 snapshots:
 - completed:
     sha256: b146f371d1a90abbd2aeae1da10f776951046be50eae55a6fe93548a74fcc0dd

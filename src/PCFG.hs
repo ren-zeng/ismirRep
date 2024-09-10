@@ -1,114 +1,83 @@
-{-# LANGUAGE PartialTypeSignatures,ScopedTypeVariables #-}
-{-# LANGUAGE AllowAmbiguousTypes,FlexibleContexts #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+
 module PCFG where
-import Control.Monad.Bayes.Class
-import Grammar
+
+import Control.Monad
+import Control.Monad.Bayes.Class hiding (independent)
+import Control.Monad.Bayes.Enumerator
+import Control.Monad.Bayes.Inference.MCMC (mcmc)
+import Control.Monad.Bayes.Sampler.Strict (sampler)
+import Data.Either
+import Data.Function
+import Data.List.Extra hiding (product)
+import qualified Data.Map as Map (fromList, (!))
+import Data.Semiring hiding (fromIntegral)
 import Data.Tree
-import Data.Vector hiding (null, sum, zip, mapM, elem, replicate, length)
+import qualified Data.Vector as V
+import Grammar
+import Prelude hiding (product, (*))
 
-import Control.Monad.Bayes.Sampler.Strict
-import Data.Kind
-import Data.List.Extra
+surface :: Tree a -> [a]
+surface (Node x []) = [x]
+surface (Node _ ts) = foldMap surface ts
 
+-- | `probDerivation` defines the probability of sampling a
+-- derivation when given a joint distribution @p(head=x,rule=r)@
+probDerivation ::
+  (Monoid b) =>
+  (NT a -> ProdRule a -> b) ->
+  ParseTree (NT a) (ProdRule a) (T a) ->
+  b
+probDerivation f = \case
+  Leaf x -> mempty
+  Branch x r ts -> f x r <> mconcat (probDerivation f <$> ts)
 
+-- | `inferPCFG` infers the rule weights from observed sequences of symbols.
+inferPCFG ::
+  forall m a.
+  (MonadFactor m, ShowGrammar a, _) =>
+  [[Symbol a]] ->
+  m [(ProdRule a, Double)]
+inferPCFG ys = do
+  ruleProbs <- ruleProbsPrior
+  let densityCat x r = pure $ if r `elem` legalRule (Right x) then Map.fromList ruleProbs Map.! r else 0
+  der <- unfoldParseTreeM (ruleDist ruleProbs) begin
+  let sur = surface $ valTree der
+  forM_ ys (\y -> score (if sur == y then probDerivation densityCat der else 0))
+  return ruleProbs
 
-{-
-Given (Grammar m a), we want to infer the underlying parameter (i.e. the weight of prod rule conditioned on current symbol)
-The parameter is a function of type ('Symbol a -> ProdRule a -> Double') 
+-- | `ruleDist` is the conditional probability @p(rule=r|head=x)@
+-- It is parametrized by the rule weights of the PCFG.
+ruleDist ::
+  (MonadDistribution m, Eq (ProdRule a), Grammar a) =>
+  [(ProdRule a, Double)] ->
+  NT a ->
+  m (ProdRule a)
+ruleDist ruleProbs x =
+  ruleProbs
+    & filter (\(a, b) -> a `elem` legalRule (Right x))
+    & categorical'
 
-- goal1 :: Symbol a -> [Symbol a] -> m (ProdRule a)
-+ Given the current symbol (x :: Symbol a) , and the children :: ([Symbol a]), we want to know the distribution of production rule p. 
+-- | Sample a sentence from a PCFG parametrized by rule weights
+generatePCFG ::
+  forall m a.
+  (ShowGrammar a, MonadDistribution m, Eq (ProdRule a)) =>
+  [(ProdRule a, Double)] ->
+  m (ParseTree (NT a) (ProdRule a) (T a))
+generatePCFG ruleProbs = do
+  unfoldParseTreeM (ruleDist ruleProbs) begin
 
-- goal2 :: [Symbol a] -> m (Symbol a, ProdRule a)
-+ Given the children, we want to know the joint probability of (parent :: Symbol a) and (p :: ProdRule a)
+dirichlet' :: (MonadDistribution m) => ([Double] -> m (V.Vector Double))
+dirichlet' = dirichlet . V.fromList
 
-
-            ProdRule a
-               |
-               V
-Symbol a --> Model --> [Symbol a]
-
-
--}
-
-
-{-
-PCFG: Each NT is associated with a discrete distribution of production rules (conceptually each rule has a weight) 
-    prior for the family of rule probability:
-    - N_x ~ condition (legal x n) (Dir [1..n]) 
-
-    the process of elaborating `x : NT` is the following: 
-    - sample a production rule `N_x : Int` ~ (Dir [1..n]) * (legal x n) 
-    - expand `x` with `N_x` resulting in a list of symbols 
-
-    Q: given an observation of a derivation tree, and the prior of N_x, what is the posterior of N_x?
-
-    Option 1: The derivation tree is of type `Tree ProdRule`. In other words, the nodes are rule-labeled
-    
-    Q1: Given an observation of a ProdRule applied at `x : NT`, how to update N_x?
-    A1= to update the param {w_n} for  dirichlet distribution, we just add 1 to the coresponding w_i. 
-
-    Q3: Given an observation of a surface sequence, how to update N_x?
--}
-
-
-{-|  
-`elaborateM` a single step of (stochastic) rule application to a non-terminal for a PCFG. 
-    
-- Input: 
-    
-    `Symbol a -> [Double]` -- A family of distributions on weights of the production rules 
-    
-    `Symbol a`             -- The input of the production rule.
-    
-- Output:
-    
-    `m [Symbol a]`         -- A list of symbols wrapped in a probability monad (Distribution for sampling). Conceptually this is the output of the production rule.
--}
-elaborateM ::  (MonadDistribution m, Grammar a) => (NT a -> m (ProdRule a)) -> Symbol a -> m [Symbol a]
-elaborateM rDistr x = do
-    case x of 
-        Left nt -> do 
-            r <- rDistr nt
-            applyRule r nt
-        Right _ -> return []
-
-
-{-|
-
-`sampleTreeG` samples a derivation tree from a PCFG. It is parametrised by a family of rule distribution indexed by `Symbol a`. 
-
-It represent the conditional distribution: 
-
-P (Tree (Symbol a) | RuleWeights)
-
--}
-
--- sampleTreeG :: (MonadDistribution m, Grammar a, _) => (NT a -> [Double]) -> m (Tree (Symbol a))
--- sampleTreeG rDistr = unfoldTreeM g (begin) where
---     g x = do
---         children <- elaborateM rDistr x
---         return (x,children)
-
-
-
-
-
--- aTree :: _ =>  m (Tree (Symbol Expr))
--- aTree = sampleTreeG (ruleDistr )
-
--- t = sampler aTree
--- >>> t
--- Node {rootLabel = NTExpr, subForest = [Node {rootLabel = NTInt, subForest = [Node {rootLabel = TInt 12, subForest = []}]}]}
-
-ruleDistr :: (Grammar  a, _) => NT a -> [Double]
-ruleDistr x = (\rule -> if rule `elem` legalRule  x then 1 else 0) <$> rules
-
-summaryRuleDist :: (Grammar  a, Enum (ProdRule a), Bounded (ProdRule a), Eq (ProdRule a), Enum (NT a), Bounded (NT a)) => [(NT a, [(ProdRule a,Double)])]
-summaryRuleDist = (\x -> (x, zip (rules) (ruleDistr x) )) <$> enumerate
-
-r ::[(NT Expr, [(ProdRule Expr, Double)])]
-r = summaryRuleDist
-
--- >>> r
--- [(NTExpr,[(RVar,1.0),(RConst,1.0),(RPlus,1.0),(RString,0.0),(RInt,0.0)]),(NTString,[(RVar,0.0),(RConst,0.0),(RPlus,0.0),(RString,1.0),(RInt,0.0)]),(NTInt,[(RVar,0.0),(RConst,0.0),(RPlus,0.0),(RString,0.0),(RInt,1.0)])]
+ruleProbsPrior :: forall m a. (_) => m [(ProdRule a, Double)]
+ruleProbsPrior = do
+  let alpha r = if r == terminate then fromIntegral (length (rules @a)) else 1
+  probs <- dirichlet' (alpha <$> rules @a)
+  return $ zip rules (V.toList probs)
