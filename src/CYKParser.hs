@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -11,6 +12,7 @@
 module CYKParser where
 
 import Control.Arrow
+import Data.Function
 import Data.List (inits, tails)
 import Data.List.Extra (notNull)
 import Data.List.NonEmpty (nonEmpty)
@@ -20,35 +22,26 @@ import Data.Tree
 import GHC.Generics
 import Grammar
 
--- >>>  length (parseCYK $ Right . uncurry TChord <$> [(V,V`Of`I),(V,I), (I,I)])
--- 1
-deriving instance Generic (T (Chord x y))
+-- >>>   head  $ parseCYK $ fmap (\x->TChord x I) $ (concat . replicate 2) [I,IV,V,I,I,II,V,I,IV,V,I]
+-- Branch (NTChord I I) RProl [Branch (NTChord I I) RChord [Leaf (TChord I I)],Branch (NTChord I I) RD5 [Branch (NTChord V I) RIV_V [Branch (NTChord IV I) RChord [Leaf (TChord IV I)],Branch (NTChord V I) RChord [Leaf (TChord V I)]],Branch (NTChord I I) RProl [Branch (NTChord I I) RChord [Leaf (TChord I I)],Branch (NTChord I I) RProl [Branch (NTChord I I) RChord [Leaf (TChord I I)],Branch (NTChord I I) RD5 [Branch (NTChord V I) RD5 [Branch (NTChord II I) RChord [Leaf (TChord II I)],Branch (NTChord V I) RChord [Leaf (TChord V I)]],Branch (NTChord I I) RProl [Branch (NTChord I I) RChord [Leaf (TChord I I)],Branch (NTChord I I) RD5 [Branch (NTChord V I) RIV_V [Branch (NTChord IV I) RChord [Leaf (TChord IV I)],Branch (NTChord V I) RChord [Leaf (TChord V I)]],Branch (NTChord I I) RProl [Branch (NTChord I I) RChord [Leaf (TChord I I)],Branch (NTChord I I) RProl [Branch (NTChord I I) RChord [Leaf (TChord I I)],Branch (NTChord I I) RD5 [Branch (NTChord V I) RIV_V [Branch (NTChord IV I) RChord [Leaf (TChord IV I)],Branch (NTChord V I) RChord [Leaf (TChord V I)]],Branch (NTChord I I) RProl [Branch (NTChord I I) RChord [Leaf (TChord I I)],Branch (NTChord I I) RProl [Branch (NTChord I I) RChord [Leaf (TChord I I)],Branch (NTChord I I) RD5 [Branch (NTChord V I) RD5 [Branch (NTChord II I) RChord [Leaf (TChord II I)],Branch (NTChord V I) RChord [Leaf (TChord V I)]],Branch (NTChord I I) RProl [Branch (NTChord I I) RChord [Leaf (TChord I I)],Branch (NTChord I I) RD5 [Branch (NTChord V I) RIV_V [Branch (NTChord IV I) RChord [Leaf (TChord IV I)],Branch (NTChord V I) RChord [Leaf (TChord V I)]],Branch (NTChord I I) RChord [Leaf (TChord I I)]]]]]]]]]]]]]]]]
 
-deriving instance Generic (Numeral)
-
-instance HasTrie (T (Chord x y)) where
-  newtype T (Chord x y) :->: b = ChordTrie {unChordTrie :: Reg (T (Chord x y)) :->: b}
-  trie = trieGeneric ChordTrie
-  untrie = untrieGeneric unChordTrie
-  enumerate = enumerateGeneric unChordTrie
-
-instance HasTrie (Numeral) where
-  newtype (Numeral) :->: b = NumeralTrie {unNumeralTrie :: Reg (Numeral) :->: b}
-  trie = trieGeneric NumeralTrie
-  untrie = untrieGeneric unNumeralTrie
-  enumerate = enumerateGeneric unNumeralTrie
+parseCYK ::
+  (HasTrie (T a), Grammar a) =>
+  [T a] ->
+  [ParseTree (NT a) (ProdRule a) (T a)]
+parseCYK sur = memoFix parseCYK' sur
 
 parseCYK' ::
   (Grammar a) =>
   ([T a] -> [ParseTree (NT a) (ProdRule a) (T a)]) ->
   ([T a] -> [ParseTree (NT a) (ProdRule a) (T a)])
-parseCYK' oneStep [] = []
-parseCYK' oneStep sur =
+parseCYK' f [] = []
+parseCYK' f sur =
   case possibleMerges (Left <$> sur) of
     [] -> do
       (l, r) <- splits sur
-      treeL <- oneStep l
-      treeR <- oneStep r
+      treeL <- f l
+      treeR <- f r
       mergePTree [treeL, treeR]
     merges -> do
       (root, p) <- merges
@@ -56,9 +49,8 @@ parseCYK' oneStep sur =
 
 directMerge :: (Grammar a) => [T a] -> [ParseTree (NT a) (ProdRule a) (T a)]
 directMerge sur = do
-  merges <- possibleMerges (Left <$> sur)
-  let (root, p) = merges
-  return $ Branch root p (Leaf <$> sur)
+  (root, rule) <- possibleMerges (Left <$> sur)
+  return $ Branch root rule (Leaf <$> sur)
 
 directMergeProb ::
   (Grammar a) =>
@@ -69,12 +61,6 @@ directMergeProb ruleProb sur = do
   merges <- possibleMerges (Left <$> sur)
   let (root, p) = merges
   return $ (Branch root p (Leaf <$> sur), ruleProb root p)
-
-parseCYK ::
-  (HasTrie (T a), Grammar a) =>
-  [T a] ->
-  [ParseTree (NT a) (ProdRule a) (T a)]
-parseCYK = memoFix parseCYK'
 
 topSymbol :: ParseTree b r a -> Either a b
 topSymbol = \case

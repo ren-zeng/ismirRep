@@ -23,6 +23,10 @@ import Control.Monad
 import Control.Monad.Bayes.Class (Log, MonadDistribution (uniformD), MonadFactor, condition, score)
 import Control.Monad.Bayes.Sampler.Strict
 import Data.Either (isLeft, isRight, lefts, rights)
+import Data.Fix (hoistFix)
+import Data.Functor.Base hiding (head, tail)
+import Data.Functor.Foldable
+import Data.Functor.Foldable (Recursive (cata), hoist)
 import Data.Functor.Foldable.TH (makeBaseFunctor)
 import Data.List.Extra (replace)
 import Data.Semiring hiding ((-))
@@ -30,6 +34,7 @@ import Data.Tree
 import Grammar
 import Meta
 import PCFG (surface)
+import TreeUtils
 import Prelude hiding (sum, (+))
 
 data Template a
@@ -74,13 +79,14 @@ instance forall a. (Grammar a) => ArgTypes (NT a) (Template (ProdRule a)) (NT a)
 -- >>> useMeta [Star,New] (Template RD5) [Template RProl]
 -- [Template RD5,Template RProl]
 
-r =
-  argTypes @(NT (Chord I I)) @(Template (ProdRule (Chord I I))) @(NT (Chord I I))
-    (NTChord I I)
-    (WithRep (Template RD5) [Star, New] [Template RProl])
+nRule :: Template (ProdRule a) -> Int
+nRule = cata $ \case
+  TemplateF _ -> 1
+  CompF _ n1 n2 -> n1 + n2
+  WithRepF n1 _ ns -> n1 + sum ns
 
--- >>> r
--- [NTChord II I,NTChord V I,NTChord I I,NTChord I I]
+-- >>> nRule (WithRep (Template RProl) [New,RepLoc 1] [Template RChord])
+-- 2
 
 expandNthThat :: Int -> (a -> Bool) -> (a -> [a]) -> [a] -> [a]
 expandNthThat n sat f [] = []
@@ -130,41 +136,79 @@ applyTemplate x = \case
 -- >>> applyTemplate (NTChord I I) (Comp 1 (Comp 2 (Template RProl) (Template RChord)) (Template RChord))
 -- [Left (TChord I I),Left (TChord I I)]
 
-outs :: (Grammar a) => Template (ProdRule a) -> NT a
-outs = error "not implemented outs"
+growNthThat :: Int -> (a -> Bool) -> (Tree a -> Tree a) -> Tree a -> Tree a
+growNthThat n sat f t = applyAt f loc t
+  where
+    loc = filter (\l -> sat . rootLabel $ navigateTo l t) (leafLocations t) !! n
 
-mergeTemplate :: (Grammar a) => [Template (ProdRule a)] -> [Template (ProdRule a)]
-mergeTemplate = error "not implemented mergeTemplate"
+growWith :: (a -> Bool) -> [Tree a -> Tree a] -> Tree a -> Tree a
+growWith sat [] t = t
+growWith sat fs t = go fs locs t
+  where
+    go [] _ t' = t'
+    go _ [] t' = t'
+    go (f : fs') (loc : ls) t' = go fs' ls (applyAt f loc t')
+    locs = filter (\l -> sat . rootLabel $ navigateTo l t) (leafLocations t)
 
-frontierWithHole :: Int -> [a] -> [[a]]
-frontierWithHole 0 l = [l]
-frontierWithHole n l = concat [seg p l | p <- intPartition 2 n]
+derivedTree :: (Grammar a) => NT a -> Template (ProdRule a) -> Tree (Symbol a)
+derivedTree x = \case
+  Template r -> Node (Right x) $ (`Node` []) <$> applyRule r x
+  Comp i α β ->
+    growNthThat
+      (i - 1)
+      isRight
+      (\(Node (Right nt) []) -> derivedTree nt β)
+      (derivedTree x α)
+  WithRep α m βs ->
+    growWith
+      isRight
+      (do β <- useMeta m α βs; return (\(Node (Right nt) []) -> derivedTree nt β))
+      (derivedTree x α)
 
--- >>> frontierWithHole 1 "abcde"
--- ProgressCancelledException
+-- >>> derivedTree (NTChord I I) (Comp 1 (Comp 2 (Template RProl) (Template RChord)) (Template RChord))
+-- Node {rootLabel = Right (NTChord I I), subForest = [Node {rootLabel = Right (NTChord I I), subForest = [Node {rootLabel = Left (TChord I I), subForest = []}]},Node {rootLabel = Right (NTChord I I), subForest = [Node {rootLabel = Left (TChord I I), subForest = []}]}]}
 
-seg :: [Int] -> [a] -> [[a]]
-seg ns l = foldr mergeFrontier [] [frontierWithHole n l | n <- ns]
+derivedRuleTree :: (Grammar a) => Template (ProdRule a) -> Tree (Maybe (ProdRule a))
+derivedRuleTree = \case
+  Template r -> Node (Just r) []
+  Comp i α β -> undefined
 
--- >>> seg [1,1] "abcde"
--- ProgressCancelledException
-mergeFrontier xs [] = xs
-mergeFrontier xs ys = init xs ++ [last xs <> head ys] ++ tail ys
+-- outs :: (Grammar a) => Template (ProdRule a) -> NT a
+-- outs = error "not implemented outs"
 
--- >>> mergeFrontier ["abc","de","l"] ["1234","56","789"]
--- ["abc","de","l1234","56","789"]
+-- mergeTemplate :: (Grammar a) => [Template (ProdRule a)] -> [Template (ProdRule a)]
+-- mergeTemplate = error "not implemented mergeTemplate"
 
-intPartition' :: Int -> Int -> Int -> [[Int]]
-intPartition' mx k n
-  | n < 0 = []
-  | k == 1, n >= 0, n <= mx = [[n]]
-  | k > 0 = do
-      a <- [0 .. mx]
-      (a :) <$> intPartition' mx (k - 1) (n - a)
-  | otherwise = []
+-- frontierWithHole :: Int -> [a] -> [[a]]
+-- frontierWithHole 0 l = [l]
+-- frontierWithHole n l = concat [seg p l | p <- intPartition 2 n]
 
-intPartition :: Int -> Int -> [[Int]]
-intPartition mx n = concat [intPartition' mx k n | k <- [0 .. mx]]
+-- -- >>> frontierWithHole 1 "abcde"
+-- -- ProgressCancelledException
 
--- >>> intPartition 2 0
--- [[0],[0,0]]
+-- seg :: [Int] -> [a] -> [[a]]
+-- seg ns l = foldr mergeFrontier [] [frontierWithHole n l | n <- ns]
+
+-- -- >>> seg [1,1] "abcde"
+-- -- ProgressCancelledException
+
+-- mergeFrontier xs [] = xs
+-- mergeFrontier xs ys = init xs ++ [last xs <> head ys] ++ tail ys
+
+-- -- >>> mergeFrontier ["abc","de","l"] ["1234","56","789"]
+-- -- ["abc","de","l1234","56","789"]
+
+-- intPartition' :: Int -> Int -> Int -> [[Int]]
+-- intPartition' mx k n
+--   | n < 0 = []
+--   | k == 1, n >= 0, n <= mx = [[n]]
+--   | k > 0 = do
+--       a <- [0 .. mx]
+--       (a :) <$> intPartition' mx (k - 1) (n - a)
+--   | otherwise = []
+
+-- intPartition :: Int -> Int -> [[Int]]
+-- intPartition mx n = concat [intPartition' mx k n | k <- [0 .. mx]]
+
+-- -- >>> intPartition 2 0
+-- -- [[0],[0,0]]

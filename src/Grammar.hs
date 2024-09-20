@@ -4,6 +4,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
@@ -21,8 +22,10 @@ import Control.Monad.Bayes.Inference.MCMC
 import Control.Monad.Bayes.Sampler.Strict (sampler)
 import Data.Data
 import Data.Kind
+import Data.MemoTrie
 import Data.Tree (Tree (Node, rootLabel))
-import Data.Vector hiding (filter, foldM, foldMap, foldl, foldr, length, mapM, replicate, replicateM, sequence, take, zip)
+import Data.Vector hiding (filter, foldM, foldMap, foldl, foldr, length, mapM, replicate, replicateM, sequence, take, zip, (++))
+import GHC.Generics
 import Preprocessing.JazzGrammar hiding (inferRuleTree, ruleTree)
 import Preprocessing.MusicTheory
 import Text.Printf
@@ -186,7 +189,13 @@ data Numeral
   | VI
   | VII
   | Numeral `Of` Numeral
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
+
+instance HasTrie Numeral where
+  newtype Numeral :->: b = NumeralTrie {unNumeralTrie :: Reg Numeral :->: b}
+  trie = trieGeneric NumeralTrie
+  untrie = untrieGeneric unNumeralTrie
+  enumerate = enumerateGeneric unNumeralTrie
 
 isOf :: Numeral -> Bool
 isOf (_ `Of` _) = True
@@ -201,25 +210,39 @@ vof V = II
 vof VI = III
 vof VII = IV
 
-data Chord :: Numeral -> Numeral -> Type where
-  Chord :: Chord x y
-  D5 :: Chord (Vof x) y -> Chord x y -> Chord x y
-  AppD :: Chord V (x `Of` y) -> Chord I (x `Of` y) -> Chord x y
-  IV_V :: Chord IV y -> Chord V y -> Chord V y
+-- data Chord :: Numeral -> Numeral -> Type where
+--   Chord :: Chord x y
+--   D5 :: Chord (Vof x) y -> Chord x y -> Chord x y
+--   AppD :: Chord V (x `Of` y) -> Chord I (x `Of` y) -> Chord x y
+--   IV_V :: Chord IV y -> Chord V y -> Chord V y
 
-ofKey :: Numeral -> Numeral -> T (Chord x y)
+ofKey :: Numeral -> Numeral -> T Chord
 x `ofKey` y = TChord x y
 
-instance Grammar (Chord x y) where
-  data T (Chord x y)
+data Chord
+
+instance HasTrie (T Chord) where
+  newtype (T Chord) :->: b = TChordTrie {unTChordTrie :: Reg (T Chord) :->: b}
+  trie = trieGeneric TChordTrie
+  untrie = untrieGeneric unTChordTrie
+  enumerate = enumerateGeneric unTChordTrie
+
+instance HasTrie (NT Chord) where
+  newtype (NT Chord) :->: b = NTChordTrie {unNTChordTrie :: Reg (NT Chord) :->: b}
+  trie = trieGeneric NTChordTrie
+  untrie = untrieGeneric unNTChordTrie
+  enumerate = enumerateGeneric unNTChordTrie
+
+instance Grammar Chord where
+  data T Chord
     = TChord Numeral Numeral
-    deriving (Show, Ord, Eq)
+    deriving (Show, Ord, Eq, Generic)
 
-  data NT (Chord x y)
+  data NT Chord
     = NTChord Numeral Numeral
-    deriving (Show, Ord, Eq)
+    deriving (Show, Ord, Eq, Generic)
 
-  data ProdRule (Chord x y)
+  data ProdRule Chord
     = RChord
     | RProl
     | RD5
@@ -285,6 +308,12 @@ foldParseTree f g acc = \case
   Leaf x -> f acc x
   Branch x y ts -> g (foldr (flip $ foldParseTree f g) acc ts) x y
 
+terminals :: ParseTree nt r a -> [a]
+terminals = foldParseTree (flip (:)) (\x _ _ -> x) []
+
+-- >>> terminals (Branch (NTChord I I) RD5 [Leaf (TChord V I), Leaf (TChord I I)])
+-- [TChord V I,TChord I I]
+
 unfoldParseTreeM ::
   (Monad m, ShowGrammar a) =>
   (NT a -> m (ProdRule a)) ->
@@ -301,7 +330,7 @@ unfoldParseTreeM sampleRule = \case
 testUnfold = sampler $ unfoldParseTreeM chordRuleDistPrior (Right $ NTChord I I)
 
 -- >>> testUnfold
--- Branch (Right (NTChord I I)) RChord [Leaf (Left (TChord I I))]
+-- Branch (NTChord I I) RChord [Leaf (TChord I I)]
 
 ruleTree :: ParseTree nt r t -> Tree (Maybe r)
 ruleTree = \case
@@ -320,9 +349,6 @@ categorical' xs = do
   n <- categorical $ fromList weights
   return (choices !! n)
 
--- >>> replicateM 20 $ sampler $ categorical' [("A",0.4), ("B",0.1),("C",0.1),("D",0.1),("E",0.1)]
--- ["D","C","C","C","A","A","A","B","C","A","E","A","E","A","A","A","C","B","C","A"]
-
-chordRuleDistPrior :: (_) => NT (Chord x y) -> m (ProdRule (Chord x y))
+chordRuleDistPrior :: (_) => NT Chord -> m (ProdRule Chord)
 chordRuleDistPrior = \case
   NTChord x y -> categorical' [(RChord, 0.5), (RAppD, 0.1), (RD5, 0.1), (RProl, 0.1)]

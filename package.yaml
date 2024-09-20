@@ -21,24 +21,19 @@ description:         Please see the README on GitHub at <https://github.com/gith
 
 dependencies:
 - base >= 4.7 && < 5
-- singletons
 - text
-- singleton-nats
-- ghc-typelits-natnormalise
-- vector-sized
 - monad-bayes
 - generics-sop
 - vector
 - statistics
 - mmorph
-- HList
-- random
 - containers
 - extra
 - transformers
-# - overloaded
 - diagrams-lib
-# - lazyppl
+- diagrams-svg
+- diagrams-contrib
+- lazyppl
 - semirings
 - MemoTrie
 - musicology-pitch
@@ -47,7 +42,7 @@ dependencies:
 - recursion-schemes
 - data-fix
 - split
-
+- monad-dijkstra
 
 ghc-options:
 - -Wall

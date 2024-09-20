@@ -19,6 +19,7 @@
       //"command": "cabal configure && cabal build"
       "command": "stack build"
     },
+    
     {
       // F6
       "group": "build",

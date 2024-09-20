@@ -204,7 +204,7 @@ mergeDerDistr ruleProb derDist = (\(t, s) -> (Derivation (Just t), s)) <$> merge
   where
     tDist = [(t, p) | (Derivation (Just t), p) <- derDist]
 
-defaultProb :: NT (Chord x1 y1) -> ProdRule (Chord x2 y2) -> Double
+defaultProb :: NT Chord -> ProdRule Chord -> Double
 defaultProb (NTChord x y) r = case x of
   V -> case r of
     RChord -> 0.5

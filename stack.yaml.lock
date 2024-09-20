@@ -58,6 +58,20 @@ packages:
     commit: 21d3be9b932239cb638f4538067f40399cc7b465
     git: https://github.com/DCMLab/haskell-musicology.git
     subdir: musicology-pitch
+- completed:
+    hackage: lazyppl-1.0@sha256:60294bfc65207393cb5f315625e0d73d0a335cf8744c5079f17c8cd17331df40,1729
+    pantry-tree:
+      sha256: 80290027a5f397ff86ae60bd3eb13bd7f45c109a87744303843c346ed7b8d2f1
+      size: 899
+  original:
+    hackage: lazyppl-1.0@sha256:60294bfc65207393cb5f315625e0d73d0a335cf8744c5079f17c8cd17331df40,1729
+- completed:
+    hackage: monad-dijkstra-0.1.1.5@sha256:5da72b0c58e619ca7856f4535e5a63cbbf61f55c043cde46fb0bc6d6f0cf93f4,1776
+    pantry-tree:
+      sha256: b2a9e30ad0854ec4cd9ced199f6d90bcd80b11dddb1a13c95c8a669377ce91a8
+      size: 434
+  original:
+    hackage: monad-dijkstra-0.1.1.5@sha256:5da72b0c58e619ca7856f4535e5a63cbbf61f55c043cde46fb0bc6d6f0cf93f4,1776
 snapshots:
 - completed:
     sha256: b146f371d1a90abbd2aeae1da10f776951046be50eae55a6fe93548a74fcc0dd

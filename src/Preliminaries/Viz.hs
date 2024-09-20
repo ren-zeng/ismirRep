@@ -1,18 +1,27 @@
-module Preliminaries.Viz where 
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeFamilies #-}
+
+module Preliminaries.Viz where
+
+import Data.Tree
+import Diagrams
+import Diagrams.Backend.SVG
+import Grammar
 import Meta
+import TemplateGrammar
+import Text.Printf (printf)
 
+asTree :: (Show a) => Template a -> Tree String
+asTree = \case
+  Template x -> Node (show x) []
+  Comp i x y -> Node (printf "∘ %d" i) [asTree x, asTree y]
+  WithRep x m ys -> Node (prettyMeta m) $ asTree x : args
+    where
+      args = case ys of
+        [] -> []
+        _ -> [Node "⨂" $ asTree <$> ys]
 
-
-class HasDiagram a where 
-    toDiagram :: a -> Diagram B
-
-class Rule a where 
-    type T a
-    inType  :: a -> [T] 
-    outType :: a -> [T] 
-
-data BlockDiagram a where 
-    Block       :: a -> BlockDiagram a
-    Composition :: BlockDiagram a -> BlockDiagram a -> BlockDiagram a
-    RepComp     :: BlockDiagram a -> Meta -> [BlockDiagram a] -> BlockDiagram a
-
+prettySymbol :: Symbol Chord -> String
+prettySymbol (Left (TChord x y)) = show x
+prettySymbol (Right (NTChord x y)) = show x
