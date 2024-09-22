@@ -77,6 +77,8 @@ library
     , statistics
     , text
     , transformers
+    , unicode-show
+    , unicode-tricks
     , vector
   default-language: Haskell2010
 
@@ -113,6 +115,8 @@ executable ismirRep-exe
     , statistics
     , text
     , transformers
+    , unicode-show
+    , unicode-tricks
     , vector
   default-language: Haskell2010
 
@@ -150,5 +154,7 @@ test-suite ismirRep-test
     , statistics
     , text
     , transformers
+    , unicode-show
+    , unicode-tricks
     , vector
   default-language: Haskell2010

@@ -4,7 +4,9 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
@@ -12,6 +14,7 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 
@@ -21,6 +24,7 @@ import Control.Monad.Bayes.Class
 import Control.Monad.Bayes.Inference.MCMC
 import Control.Monad.Bayes.Sampler.Strict (sampler)
 import Data.Data
+import Data.Functor.Foldable.TH (makeBaseFunctor)
 import Data.Kind
 import Data.MemoTrie
 import Data.Tree (Tree (Node, rootLabel))
@@ -253,7 +257,7 @@ instance Grammar Chord where
   begin = Right $ NTChord I I
 
   nArg = \case
-    RChord -> 1
+    RChord -> 0
     RProl -> 2
     RD5 -> 2
     RAppD -> 2
@@ -302,6 +306,8 @@ sampleTree d x@(Right nt) = do
 
 data ParseTree nt r t = Leaf t | Branch nt r [ParseTree nt r t]
   deriving (Show, Eq, Ord)
+
+makeBaseFunctor ''ParseTree
 
 foldParseTree :: (c -> t -> c) -> (c -> nt -> r -> c) -> c -> ParseTree nt r t -> c
 foldParseTree f g acc = \case

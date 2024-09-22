@@ -72,6 +72,13 @@ packages:
       size: 434
   original:
     hackage: monad-dijkstra-0.1.1.5@sha256:5da72b0c58e619ca7856f4535e5a63cbbf61f55c043cde46fb0bc6d6f0cf93f4,1776
+- completed:
+    hackage: unicode-tricks-0.14.1.0@sha256:2536df48d387512ddc1a85e3b43d48685928c2124b98a9f92784e61e4d7dfaec,4393
+    pantry-tree:
+      sha256: 5926a7b25ff0d1e71e137d2fb6551f25d860296804e01efca6bf63ae32d5306f
+      size: 6267
+  original:
+    hackage: unicode-tricks-0.14.1.0@sha256:2536df48d387512ddc1a85e3b43d48685928c2124b98a9f92784e61e4d7dfaec,4393
 snapshots:
 - completed:
     sha256: b146f371d1a90abbd2aeae1da10f776951046be50eae55a6fe93548a74fcc0dd

@@ -26,9 +26,9 @@ import Data.Either (isLeft, isRight, lefts, rights)
 import Data.Fix (hoistFix)
 import Data.Functor.Base hiding (head, tail)
 import Data.Functor.Foldable
-import Data.Functor.Foldable (Recursive (cata), hoist)
 import Data.Functor.Foldable.TH (makeBaseFunctor)
 import Data.List.Extra (replace)
+import Data.Maybe (isNothing)
 import Data.Semiring hiding ((-))
 import Data.Tree
 import Grammar
@@ -165,13 +165,29 @@ derivedTree x = \case
       (do β <- useMeta m α βs; return (\(Node (Right nt) []) -> derivedTree nt β))
       (derivedTree x α)
 
+derivedRuleTree :: forall a. (Grammar a) => Template (ProdRule a) -> Tree (Maybe (ProdRule a))
+derivedRuleTree = \case
+  Template r -> Node (Just r) $ replicate (nArg r) (Node Nothing [])
+  Comp i α β ->
+    growNthThat
+      (i - 1)
+      isNothing
+      (\(Node Nothing []) -> derivedRuleTree β)
+      (derivedRuleTree α)
+  WithRep α m βs ->
+    growWith
+      isNothing
+      (do β <- useMeta m α βs; return (\(Node Nothing []) -> derivedRuleTree β))
+      (derivedRuleTree α)
+
 -- >>> derivedTree (NTChord I I) (Comp 1 (Comp 2 (Template RProl) (Template RChord)) (Template RChord))
 -- Node {rootLabel = Right (NTChord I I), subForest = [Node {rootLabel = Right (NTChord I I), subForest = [Node {rootLabel = Left (TChord I I), subForest = []}]},Node {rootLabel = Right (NTChord I I), subForest = [Node {rootLabel = Left (TChord I I), subForest = []}]}]}
 
-derivedRuleTree :: (Grammar a) => Template (ProdRule a) -> Tree (Maybe (ProdRule a))
-derivedRuleTree = \case
-  Template r -> Node (Just r) []
-  Comp i α β -> undefined
+templateSize :: Template a -> Int
+templateSize = cata $ \case
+  TemplateF _ -> 1
+  CompF _ x y -> x + y
+  WithRepF x _ ys -> x + sum ys
 
 -- outs :: (Grammar a) => Template (ProdRule a) -> NT a
 -- outs = error "not implemented outs"

@@ -43,7 +43,8 @@ dependencies:
 - data-fix
 - split
 - monad-dijkstra
-
+- unicode-show
+- unicode-tricks
 ghc-options:
 - -Wall
 - -Wcompat

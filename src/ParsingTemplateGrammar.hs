@@ -23,15 +23,15 @@ import Data.Functor.Foldable (hylo)
 import Data.List hiding (product, sum)
 import Data.List.Extra (notNull)
 import Data.List.Split
-import Data.Maybe (catMaybes)
-import Data.MemoTrie (memo2, memoFix, mup)
+import Data.Maybe (catMaybes, isJust, isNothing)
+import Data.MemoTrie (HasTrie, memo2, memoFix, mup)
 import Data.Monoid (Sum)
 import Data.Ord (comparing)
 import Data.Semiring hiding ((-))
 import Data.Tree
 import GHC.Base hiding (One, Symbol, foldr, mapM)
 import Grammar hiding (Plus)
-import LazyPPL
+import LazyPPL hiding (Tree)
 import LazyPPL.Distributions (uniformdiscrete)
 import Meta
 import Preliminaries.Viz (asTree)
@@ -83,12 +83,12 @@ evidence x = splitEvidence . applyTemplate x
 topBy :: (Ord b) => (a -> b) -> [a] -> [a]
 topBy f = take 1 . sortBy (comparing f)
 
-explainEvidence' :: (Grammar a, MonadPlus m, MonadFromList m, MonadFail m) => (NT a -> [[T a]] -> m (Template (ProdRule a))) -> NT a -> [[T a]] -> m (Template (ProdRule a))
+explainEvidence' :: (Grammar a, MonadPlus m, _) => (NT a -> [[T a]] -> m (Template (ProdRule a))) -> NT a -> [[T a]] -> m (Template (ProdRule a))
 explainEvidence' f x ls =
   case ls of
     [[], [], []] -> baseParse x ls
     _ ->
-      if notNull (baseParse x ls)
+      if isJust $ runSearchBest (baseParse x ls)
         then baseParse x ls
         else case ls of
           [l] -> zeroHoleParse f x l
@@ -97,7 +97,11 @@ explainEvidence' f x ls =
           _ -> mzero
 
 -- | Parsing for template grammar
-explainEvidence :: (Grammar a, MonadPlus m, _) => NT a -> [[T a]] -> m (Template (ProdRule a))
+explainEvidence ::
+  (Grammar a, MonadPlus m, HasTrie (NT a), HasTrie (T a), _) =>
+  NT a ->
+  [[T a]] ->
+  m (Template (ProdRule a))
 explainEvidence = memoFix2 explainEvidence'
 
 memoFix2 f = memoFix (\g a -> memoFix (\h b -> f g a b))
@@ -107,9 +111,6 @@ memoFix2 f = memoFix (\g a -> memoFix (\h b -> f g a b))
 
 -- >>> length $ parseCYK  [TChord x I | x <- concat $ replicate 1 [I,V,I,II,V,I]]
 -- 3
-
-weightedParse :: (_) => NT a -> [[T a]] -> Search (Sum Integer) (Template (ProdRule a))
-weightedParse = explainEvidence
 
 -- testTemplateParse :: (Grammar a, _) => NT a -> [[T a]] -> Bool
 -- testTemplateParse x e =
@@ -122,49 +123,59 @@ baseParse ::
   NT a ->
   [[T a]] ->
   m (Template (ProdRule a))
-baseParse x ls = do
-  r <- mfromList $ legalRule (Right x)
+baseParse x ls = foldSum (\t -> do cost' (1 :: Sum Int); return t) $ do
+  r <- legalRule (Right x)
   let t = Template r
   guard (evidence x t == ls)
   return t
 
 zeroHoleParse ::
-  (MonadFromList m, MonadFail m, MonadPlus m, Grammar a) =>
+  (MonadPlus m, Grammar a, _) =>
   (NT a -> [[T a]] -> m (Template (ProdRule a))) ->
   NT a ->
   [T a] ->
   m (Template (ProdRule a))
 zeroHoleParse f x l =
   asum
-    [ do
-        sl <- mfromList $ splitsN 3 l
-        case sl of
-          [l1, l2, l3] -> do
-            guard (l2 /= l)
-            guard (notNull l2)
+    [ foldSum
+        ( \(l1, l2, l3) -> do
             α <- f x [l1, l3]
             let [y] = argTypes x α
             β <- f y [l2]
+            cost' 1
             return (WithRep α [New] [β])
-          _ -> mzero,
-      do
-        [l1, l2, l3, l4, l5] <- mfromList $ splitsN 5 l
-        guard (l `notElem` [l2, l4])
-        guard (notNull l2)
-        guard (notNull l4)
-        α <- f x [l1, l3, l5]
+        )
+        ( do
+            [l1, l2, l3] <- splitsN 3 l
+            guard (l2 /= l)
+            guard (notNull l2)
 
-        let [y, z] = argTypes x α
-        β <- f y [l2]
-        γ <- f z [l4]
-        return $
-          if β == γ
-            then WithRep α [New, RepLoc 1] [β]
-            else WithRep α [New, New] [β, γ]
+            return (l1, l2, l3)
+        ),
+      foldSum
+        ( \(l1, l2, l3, l4, l5) -> do
+            α <- f x [l1, l3, l5]
+            let [y, z] = argTypes x α
+            β <- f y [l2]
+            γ <- f z [l4]
+            let (m, βs) = if β == γ then ([New, RepLoc 1], [β]) else ([New, New], [β, γ])
+            cost' 1
+            return $ WithRep α m βs
+        )
+        ( do
+            [l1, l2, l3, l4, l5] <- splitsN 5 l
+            guard (l `notElem` [l2, l4])
+            guard (notNull l2)
+            guard (notNull l4)
+
+            return (l1, l2, l3, l4, l5)
+        )
     ]
 
+foldSum f = asum . fmap f
+
 oneHoleParse ::
-  (MonadPlus m, Grammar a, MonadFromList m, MonadFail m) =>
+  (MonadPlus m, Grammar a, _) =>
   (NT a -> [[T a]] -> m (Template (ProdRule a))) ->
   NT a ->
   [T a] ->
@@ -172,39 +183,57 @@ oneHoleParse ::
   m (Template (ProdRule a))
 oneHoleParse f x l_L l_R =
   asum
-    [ do
-        [l2, l3, l4] <- mfromList $ splitsN 3 l_R
-        let l1 = l_L
-        guard (notNull l3)
-        α <- f x [l1, l2, l4]
-        let [_, z] = argTypes x α
-        β <- f z [l3]
-        return $ Comp 2 α β,
-      do
-        [l1, l2, l3] <- mfromList $ splitsN 3 l_L
-        let l4 = l_R
-        guard (notNull l2)
-        α <- f x [l1, l3, l4]
-        let [y, _] = argTypes x α
-        β <- f y [l2]
-        return $ Comp 1 α β,
-      do
-        [l1, l2] <- mfromList $ splitsN 2 l_L
-        [l3, l4] <- mfromList $ splitsN 2 l_R
-        guard ([l1, l4] /= [l_L, l_R])
-        guard ([l2, l3] /= [l_L, l_R])
-        α <- f x [l1, l4]
+    [ foldSum
+        ( \(l1, l2, l3, l4) -> do
+            α <- f x [l1, l2, l4]
+            let [_, z] = argTypes x α
+            β <- f z [l3]
+            cost' 1
+            return $ Comp 2 α β
+        )
+        ( do
+            [l2, l3, l4] <- splitsN 3 l_R
+            guard (notNull l3)
+            let l1 = l_L
 
-        let [y] = argTypes x α
-        β <- f y [l2, l3]
-        return $
-          if α == β
-            then WithRep α [Star] []
-            else WithRep α [New] [β]
+            return (l1, l2, l3, l4)
+        ),
+      foldSum
+        ( \(l1, l2, l3, l4) -> do
+            α <- f x [l1, l3, l4]
+            let [y, _] = argTypes x α
+            β <- f y [l2]
+            cost' 1
+            return $ Comp 1 α β
+        )
+        ( do
+            [l1, l2, l3] <- splitsN 3 l_L
+            let l4 = l_R
+            guard (notNull l2)
+
+            return (l1, l2, l3, l4)
+        ),
+      foldSum
+        ( \(l1, l2, l3, l4) -> do
+            α <- f x [l1, l4]
+            let [y] = argTypes x α
+            β <- f y [l2, l3]
+            let (m, βs) = if α == β then ([Star], []) else ([New], [β])
+            cost' 1
+            return $ WithRep α m βs
+        )
+        ( do
+            [l1, l2] <- splitsN 2 l_L
+            [l3, l4] <- splitsN 2 l_R
+            guard ([l1, l4] /= [l_L, l_R])
+            guard ([l2, l3] /= [l_L, l_R])
+
+            return (l1, l2, l3, l4)
+        )
     ]
 
 twoHoleParse ::
-  (MonadFail m, MonadPlus m, Grammar a, MonadFromList m) =>
+  (MonadPlus m, Grammar a, _) =>
   (NT a -> [[T a]] -> m (Template (ProdRule a))) ->
   NT a ->
   [T a] ->
@@ -213,68 +242,102 @@ twoHoleParse ::
   m (Template (ProdRule a))
 twoHoleParse f x l_L l_M l_R =
   asum
-    [ do
-        [l1, l2] <- mfromList $ splitsN 2 l_L
-        let l3 = l_M
-        [l4, l5, l6, l7] <- mfromList $ splitsN 4 l_R
-        guard ([l_L, l_M, l_R] `notElem` [[l1, l5, l7], [l2, l3, l4]])
-        α <- f x [l1, l5, l7]
+    [ foldSum
+        ( \(l1, l2, l3, l4, l5, l6, l7) -> do
+            α <- f x [l1, l5, l7]
+            guard (notNull l6)
+            let [y, z] = argTypes x α
+            β1 <- f y [l2, l3, l4]
+            β <- f z [l6]
+            let (m, βs) = if α == β1 then ([Star, New], [β]) else ([New, New], [β1, β])
+            cost' 1
+            return $ WithRep α m βs
+        )
+        ( do
+            [l1, l2] <- splitsN 2 l_L
+            let l3 = l_M
+            [l4, l5, l6, l7] <- splitsN 4 l_R
+            guard ([l_L, l_M, l_R] `notElem` [[l1, l5, l7], [l2, l3, l4]])
 
-        guard (notNull l6)
-        let [y, z] = argTypes x α
-        β1 <- f y [l2, l3, l4]
-        β <- f z [l6]
-        return $
-          if α == β1
-            then WithRep α [Star, New] [β]
-            else WithRep α [New, New] [β1, β],
-      do
-        [[l1, l2, l3, l4], [l5], [l6, l7]] <- mfromList $ zipWithM splitsN [4, 1, 2] [l_L, l_M, l_R]
-        guard ([l_L, l_M, l_R] `notElem` [[l1, l3, l7], [l4, l5, l6]])
-        α <- f x [l1, l3, l7]
-        guard (notNull l2)
-        let [y, z] = argTypes x α
-        β <- f y [l2]
-        β1 <- f z [l4, l5, l6]
-        return $
-          if α == β1
-            then WithRep α [New, Star] [β]
-            else WithRep α [New, New] [β, β1],
-      do
-        [[l1, l2], [l3, l4], [l5]] <- mfromList $ zipWithM splitsN [2, 2, 1] [l_L, l_M, l_R]
-        guard ([l_L, l_M, l_R] /= [l1, l4, l5])
-        α <- f x [l1, l4, l5]
+            return (l1, l2, l3, l4, l5, l6, l7)
+        ),
+      foldSum
+        ( \(l1, l2, l3, l4, l5, l6, l7) -> do
+            α <- f x [l1, l3, l7]
+            guard (notNull l2)
+            let [y, z] = argTypes x α
+            β <- f y [l2]
+            β1 <- f z [l4, l5, l6]
+            cost' 1
+            return $
+              if α == β1
+                then WithRep α [New, Star] [β]
+                else WithRep α [New, New] [β, β1]
+        )
+        ( do
+            [[l1, l2, l3, l4], [l5], [l6, l7]] <- zipWithM splitsN [4, 1, 2] [l_L, l_M, l_R]
+            guard ([l_L, l_M, l_R] `notElem` [[l1, l3, l7], [l4, l5, l6]])
 
-        let [y, _] = argTypes x α
-        β <- f y [l2, l3]
-        return $ Comp 1 α β,
-      do
-        [[l1], [l2, l3], [l4, l5]] <- mfromList $ zipWithM splitsN [1, 2, 2] [l_L, l_M, l_R]
-        guard ([l_L, l_M, l_R] /= [l1, l2, l5])
-        α <- f x [l1, l2, l5]
+            return (l1, l2, l3, l4, l5, l6, l7)
+        ),
+      foldSum
+        ( \(l1, l2, l3, l4, l5) -> do
+            α <- f x [l1, l4, l5]
+            let [y, _] = argTypes x α
+            β <- f y [l2, l3]
+            cost' 1
+            return $ Comp 1 α β
+        )
+        ( do
+            [[l1, l2], [l3, l4], [l5]] <- zipWithM splitsN [2, 2, 1] [l_L, l_M, l_R]
+            guard ([l_L, l_M, l_R] /= [l1, l4, l5])
+            return (l1, l2, l3, l4, l5)
+        ),
+      foldSum
+        ( \(l1, l2, l3, l4, l5) -> do
+            α <- f x [l1, l2, l5]
+            let [_, z] = argTypes x α
+            β <- f z [l3, l4]
+            cost' 1
+            return $ Comp 2 α β
+        )
+        ( do
+            [[l1], [l2, l3], [l4, l5]] <- zipWithM splitsN [1, 2, 2] [l_L, l_M, l_R]
+            guard ([l_L, l_M, l_R] /= [l1, l2, l5])
 
-        let [_, z] = argTypes x α
-        β <- f z [l3, l4]
-        return $ Comp 2 α β,
-      do
-        [[l1, l2], [l3], [l4, l5]] <- mfromList $ zipWithM splitsN [2, 1, 2] [l_L, l_M, l_R]
-        α <- f x [l1, l5]
+            return (l1, l2, l3, l4, l5)
+        ),
+      foldSum
+        ( \(l1, l2, l3, l4, l5) -> do
+            α <- f x [l1, l5]
+            let [y] = argTypes x α
+            β <- f y [l2, l3, l4]
+            cost' 1
+            return $ WithRep α [New] [β]
+        )
+        ( do
+            [[l1, l2], [l3], [l4, l5]] <- zipWithM splitsN [2, 1, 2] [l_L, l_M, l_R]
 
-        let [y] = argTypes x α
-        β <- f y [l2, l3, l4]
-        return $ WithRep α [New] [β],
-      do
-        [[l1, l2], [l3, l4, l5], [l6, l7]] <- mfromList $ zipWithM splitsN [2, 3, 2] [l_L, l_M, l_R]
-        guard ([l_L, l_M, l_R] /= [l1, l4, l7])
-        α <- f x [l1, l4, l7]
+            return (l1, l2, l3, l4, l5)
+        ),
+      foldSum
+        ( \(l1, l2, l3, l4, l5, l6, l7) -> do
+            α <- f x [l1, l4, l7]
+            let [y, z] = argTypes x α
+            β <- f y [l2, l3]
+            γ <- f z [l5, l6]
+            cost' 1
+            return $
+              if β == γ
+                then WithRep α [New, RepLoc 1] [β]
+                else WithRep α [New, New] [β, γ]
+        )
+        ( do
+            [[l1, l2], [l3, l4, l5], [l6, l7]] <- zipWithM splitsN [2, 3, 2] [l_L, l_M, l_R]
+            guard ([l_L, l_M, l_R] /= [l1, l4, l7])
 
-        let [y, z] = argTypes x α
-        β <- f y [l2, l3]
-        γ <- f z [l5, l6]
-        return $
-          if β == γ
-            then WithRep α [New, RepLoc 1] [β]
-            else WithRep α [New, New] [β, γ]
+            return (l1, l2, l3, l4, l5, l6, l7)
+        )
     ]
 
 -- zeroHoleParse :: (Semiring b) => ([[a]] -> b) -> ([b] -> [b]) -> [a] -> b
