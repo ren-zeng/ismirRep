@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE RankNTypes #-}
@@ -38,15 +39,6 @@ import Preliminaries.Viz (asTree)
 import SemiringParsing
 import TemplateGrammar
 import Prelude hiding (product, sequence, sum, (+))
-
-class MonadFromList m where
-  mfromList :: [a] -> m a
-
-instance MonadFromList [] where
-  mfromList = id
-
-instance (Monoid a) => MonadFromList (Search a) where
-  mfromList xs = undefined
 
 instance (Ord a, Monoid a) => MonadFail (Search a) where
   fail _ = mzero
@@ -83,12 +75,17 @@ evidence x = splitEvidence . applyTemplate x
 topBy :: (Ord b) => (a -> b) -> [a] -> [a]
 topBy f = take 1 . sortBy (comparing f)
 
-explainEvidence' :: (Grammar a, MonadPlus m, _) => (NT a -> [[T a]] -> m (Template (ProdRule a))) -> NT a -> [[T a]] -> m (Template (ProdRule a))
+explainEvidence' ::
+  (Grammar a, MonadPlus m, _) =>
+  (NT a -> [[T a]] -> m (Template (ProdRule a))) ->
+  NT a ->
+  [[T a]] ->
+  m (Template (ProdRule a))
 explainEvidence' f x ls =
   case ls of
     [[], [], []] -> baseParse x ls
     _ ->
-      if isJust $ runSearchBest (baseParse x ls)
+      if notNull (baseParse x ls)
         then baseParse x ls
         else case ls of
           [l] -> zeroHoleParse f x l
@@ -96,13 +93,21 @@ explainEvidence' f x ls =
           [l1, l2, l3] -> twoHoleParse f x l1 l2 l3
           _ -> mzero
 
+explainEvidence'' ::
+  (Grammar a, MonadPlus m) =>
+  ([[T a]] -> NT a -> m (Template (ProdRule a))) ->
+  [[T a]] ->
+  NT a ->
+  m (Template (ProdRule a))
+explainEvidence'' f ls x = explainEvidence' (flip f) x ls
+
 -- | Parsing for template grammar
 explainEvidence ::
   (Grammar a, MonadPlus m, HasTrie (NT a), HasTrie (T a), _) =>
-  NT a ->
   [[T a]] ->
+  NT a ->
   m (Template (ProdRule a))
-explainEvidence = memoFix2 explainEvidence'
+explainEvidence = memoFix2 explainEvidence''
 
 memoFix2 f = memoFix (\g a -> memoFix (\h b -> f g a b))
 
@@ -123,7 +128,7 @@ baseParse ::
   NT a ->
   [[T a]] ->
   m (Template (ProdRule a))
-baseParse x ls = foldSum (\t -> do cost' (1 :: Sum Int); return t) $ do
+baseParse x ls = foldSum return $ do
   r <- legalRule (Right x)
   let t = Template r
   guard (evidence x t == ls)
@@ -138,28 +143,13 @@ zeroHoleParse ::
 zeroHoleParse f x l =
   asum
     [ foldSum
-        ( \(l1, l2, l3) -> do
-            α <- f x [l1, l3]
-            let [y] = argTypes x α
-            β <- f y [l2]
-            cost' 1
-            return (WithRep α [New] [β])
-        )
-        ( do
-            [l1, l2, l3] <- splitsN 3 l
-            guard (l2 /= l)
-            guard (notNull l2)
-
-            return (l1, l2, l3)
-        ),
-      foldSum
         ( \(l1, l2, l3, l4, l5) -> do
             α <- f x [l1, l3, l5]
             let [y, z] = argTypes x α
             β <- f y [l2]
             γ <- f z [l4]
             let (m, βs) = if β == γ then ([New, RepLoc 1], [β]) else ([New, New], [β, γ])
-            cost' 1
+
             return $ WithRep α m βs
         )
         ( do
@@ -169,6 +159,21 @@ zeroHoleParse f x l =
             guard (notNull l4)
 
             return (l1, l2, l3, l4, l5)
+        ),
+      foldSum
+        ( \(l1, l2, l3) -> do
+            α <- f x [l1, l3]
+            let [y] = argTypes x α
+            β <- f y [l2]
+
+            return (WithRep α [New] [β])
+        )
+        ( do
+            [l1, l2, l3] <- splitsN 3 l
+            guard (l2 /= l)
+            guard (notNull l2)
+
+            return (l1, l2, l3)
         )
     ]
 
@@ -185,25 +190,10 @@ oneHoleParse f x l_L l_R =
   asum
     [ foldSum
         ( \(l1, l2, l3, l4) -> do
-            α <- f x [l1, l2, l4]
-            let [_, z] = argTypes x α
-            β <- f z [l3]
-            cost' 1
-            return $ Comp 2 α β
-        )
-        ( do
-            [l2, l3, l4] <- splitsN 3 l_R
-            guard (notNull l3)
-            let l1 = l_L
-
-            return (l1, l2, l3, l4)
-        ),
-      foldSum
-        ( \(l1, l2, l3, l4) -> do
             α <- f x [l1, l3, l4]
             let [y, _] = argTypes x α
             β <- f y [l2]
-            cost' 1
+
             return $ Comp 1 α β
         )
         ( do
@@ -215,11 +205,26 @@ oneHoleParse f x l_L l_R =
         ),
       foldSum
         ( \(l1, l2, l3, l4) -> do
+            α <- f x [l1, l2, l4]
+            let [_, z] = argTypes x α
+            β <- f z [l3]
+
+            return $ Comp 2 α β
+        )
+        ( do
+            [l2, l3, l4] <- splitsN 3 l_R
+            guard (notNull l3)
+            let l1 = l_L
+
+            return (l1, l2, l3, l4)
+        ),
+      foldSum
+        ( \(l1, l2, l3, l4) -> do
             α <- f x [l1, l4]
             let [y] = argTypes x α
             β <- f y [l2, l3]
             let (m, βs) = if α == β then ([Star], []) else ([New], [β])
-            cost' 1
+
             return $ WithRep α m βs
         )
         ( do
@@ -250,7 +255,7 @@ twoHoleParse f x l_L l_M l_R =
             β1 <- f y [l2, l3, l4]
             β <- f z [l6]
             let (m, βs) = if α == β1 then ([Star, New], [β]) else ([New, New], [β1, β])
-            cost' 1
+
             return $ WithRep α m βs
         )
         ( do
@@ -268,7 +273,7 @@ twoHoleParse f x l_L l_M l_R =
             let [y, z] = argTypes x α
             β <- f y [l2]
             β1 <- f z [l4, l5, l6]
-            cost' 1
+
             return $
               if α == β1
                 then WithRep α [New, Star] [β]
@@ -285,7 +290,7 @@ twoHoleParse f x l_L l_M l_R =
             α <- f x [l1, l4, l5]
             let [y, _] = argTypes x α
             β <- f y [l2, l3]
-            cost' 1
+
             return $ Comp 1 α β
         )
         ( do
@@ -298,7 +303,7 @@ twoHoleParse f x l_L l_M l_R =
             α <- f x [l1, l2, l5]
             let [_, z] = argTypes x α
             β <- f z [l3, l4]
-            cost' 1
+
             return $ Comp 2 α β
         )
         ( do
@@ -312,7 +317,7 @@ twoHoleParse f x l_L l_M l_R =
             α <- f x [l1, l5]
             let [y] = argTypes x α
             β <- f y [l2, l3, l4]
-            cost' 1
+
             return $ WithRep α [New] [β]
         )
         ( do
@@ -326,7 +331,7 @@ twoHoleParse f x l_L l_M l_R =
             let [y, z] = argTypes x α
             β <- f y [l2, l3]
             γ <- f z [l5, l6]
-            cost' 1
+
             return $
               if β == γ
                 then WithRep α [New, RepLoc 1] [β]

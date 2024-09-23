@@ -21,10 +21,10 @@ import Text.Show.Unicode
 
 testTemplate :: Template (ProdRule Chord)
 testTemplate =
-  snd . head . runSearch @(Sum Int) $
+  minimumOn nRule $
     explainEvidence
+      ((fmap . fmap) (`TChord` I) [[I, IV, V, II, V, I]])
       (NTChord I I)
-      ((fmap . fmap) (`TChord` I) [[I, V, II, V, I]])
 
 testParse = minimumOn depth . parseCYK $ fmap (`TChord` I) $ concat . replicate 3 $ [I, II, V, I, V, I]
   where
@@ -41,15 +41,15 @@ testParse = minimumOn depth . parseCYK $ fmap (`TChord` I) $ concat . replicate 
 -- testTree :: Tree String
 -- testTree = asTree testTemplate
 
--- main =
---   writeSVG "testTemplate.svg" $
---     hsep 1 $
---       toTreeDiagram' <$> [asTree testTemplate, showMaybe <$> derivedRuleTree testTemplate, prettySymbol <$> derivedTree (NTChord I I) testTemplate]
-
 main =
-  writeSVG "testCYK.svg" $
+  writeSVG "testTemplate.svg" $
     hsep 1 $
-      toTreeDiagram' <$> [prettySymbol <$> valTree testParse]
+      toTreeDiagram' <$> [asTree testTemplate, showMaybe <$> derivedRuleTree testTemplate, prettySymbol <$> derivedTree (NTChord I I) testTemplate]
+
+-- main =
+--   writeSVG "testCYK.svg" $
+--     hsep 1 $
+--       toTreeDiagram' <$> [prettySymbol <$> valTree testParse]
 
 showMaybe :: (Show a) => Maybe a -> String
 showMaybe = \case
