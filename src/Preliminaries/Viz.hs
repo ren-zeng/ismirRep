@@ -1,9 +1,12 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Preliminaries.Viz where
 
+import Data.List (intersperse)
+import Data.List.Extra
 import Data.Tree
 import Diagrams
 import Diagrams.Backend.SVG
@@ -25,3 +28,6 @@ asTree = \case
 prettySymbol :: Symbol Chord -> String
 prettySymbol (Left (TChord x y)) = show x
 prettySymbol (Right (NTChord x y)) = show x
+
+prettyEvidence :: [[T Chord]] -> String
+prettyEvidence e = intercalate " __ " (fmap (unwords . fmap (prettySymbol . Left)) e)

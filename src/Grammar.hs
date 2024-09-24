@@ -30,7 +30,6 @@ import Data.MemoTrie
 import Data.Tree (Tree (Node, rootLabel))
 import Data.Vector hiding (filter, foldM, foldMap, foldl, foldr, length, mapM, replicate, replicateM, sequence, take, zip, (++))
 import GHC.Generics
-import Preprocessing.JazzGrammar hiding (inferRuleTree, ruleTree)
 import Preprocessing.MusicTheory
 import Text.Printf
 
@@ -247,51 +246,51 @@ instance Grammar Chord where
     deriving (Show, Ord, Eq, Generic)
 
   data ProdRule Chord
-    = RChord
-    | RProl
-    | RD5
-    | RAppD
-    | RIV_V
+    = Chord
+    | Prol
+    | D5
+    | AppD
+    | IV_V
     deriving (Show, Enum, Ord, Bounded, Eq)
 
   begin = Right $ NTChord I I
 
   nArg = \case
-    RChord -> 0
-    RProl -> 2
-    RD5 -> 2
-    RAppD -> 2
-    RIV_V -> 2
+    Chord -> 0
+    Prol -> 2
+    D5 -> 2
+    AppD -> 2
+    IV_V -> 2
 
-  legalRule (Right (NTChord V y)) = [RChord, RProl, RD5, RAppD, RIV_V]
-  legalRule (Right (NTChord x y)) = [RChord, RProl, RD5, RAppD]
+  legalRule (Right (NTChord V y)) = [Chord, Prol, D5, AppD, IV_V]
+  legalRule (Right (NTChord x y)) = [Chord, Prol, D5, AppD]
   legalRule (Left _) = []
 
   decode = undefined
   encode = undefined
-  safeApplyRule RChord (NTChord x y) = Just $ Left <$> [TChord x y]
-  safeApplyRule RProl (NTChord x y) = Just $ Right <$> [NTChord x y, NTChord x y]
-  safeApplyRule RD5 (NTChord x y) = Just $ Right <$> [NTChord (vof x) y, NTChord x y]
-  safeApplyRule RAppD (NTChord x y) = Just $ Right <$> [NTChord V (x `Of` y), NTChord x y]
-  safeApplyRule RIV_V (NTChord x y)
+  safeApplyRule Chord (NTChord x y) = Just $ Left <$> [TChord x y]
+  safeApplyRule Prol (NTChord x y) = Just $ Right <$> [NTChord x y, NTChord x y]
+  safeApplyRule D5 (NTChord x y) = Just $ Right <$> [NTChord (vof x) y, NTChord x y]
+  safeApplyRule AppD (NTChord x y) = Just $ Right <$> [NTChord V (x `Of` y), NTChord x y]
+  safeApplyRule IV_V (NTChord x y)
     | x == V = Just $ Right <$> [NTChord IV y, NTChord V y]
     | otherwise = Nothing
 
   possibleMerges [Right (NTChord x y), Right (NTChord x' y')] =
     if
-      | (x, y) == (x', y') -> [(NTChord x y, RProl)]
-      | y == y', x == vof x' -> [(NTChord x' y', RD5)]
-      | y == y', (x, x') == (IV, V) -> [(NTChord x' y', RIV_V)]
+      | (x, y) == (x', y') -> [(NTChord x y, Prol)]
+      | y == y', x == vof x' -> [(NTChord x' y', D5)]
+      | y == y', (x, x') == (IV, V) -> [(NTChord x' y', IV_V)]
       | otherwise -> case y of
           a `Of` b ->
             if
-              | (a, b) == (x', y'), x == V -> [(NTChord a b, RAppD)]
+              | (a, b) == (x', y'), x == V -> [(NTChord a b, AppD)]
               | otherwise -> []
           _ -> []
-  possibleMerges [Left (TChord x y)] = [(NTChord x y, RChord)]
+  possibleMerges [Left (TChord x y)] = [(NTChord x y, Chord)]
   possibleMerges _ = []
 
-  terminate = RChord
+  terminate = Chord
 
 mcmcConfig = MCMCConfig {numMCMCSteps = 200, numBurnIn = 100, proposal = SingleSiteMH}
 
@@ -317,7 +316,7 @@ foldParseTree f g acc = \case
 terminals :: ParseTree nt r a -> [a]
 terminals = foldParseTree (flip (:)) (\x _ _ -> x) []
 
--- >>> terminals (Branch (NTChord I I) RD5 [Leaf (TChord V I), Leaf (TChord I I)])
+-- >>> terminals (Branch (NTChord I I) D5 [Leaf (TChord V I), Leaf (TChord I I)])
 -- [TChord V I,TChord I I]
 
 unfoldParseTreeM ::
@@ -336,7 +335,7 @@ unfoldParseTreeM sampleRule = \case
 testUnfold = sampler $ unfoldParseTreeM chordRuleDistPrior (Right $ NTChord I I)
 
 -- >>> testUnfold
--- Branch (NTChord I I) RChord [Leaf (TChord I I)]
+-- Branch (NTChord I I) Chord [Leaf (TChord I I)]
 
 ruleTree :: ParseTree nt r t -> Tree (Maybe r)
 ruleTree = \case
@@ -357,4 +356,4 @@ categorical' xs = do
 
 chordRuleDistPrior :: (_) => NT Chord -> m (ProdRule Chord)
 chordRuleDistPrior = \case
-  NTChord x y -> categorical' [(RChord, 0.5), (RAppD, 0.1), (RD5, 0.1), (RProl, 0.1)]
+  NTChord x y -> categorical' [(Chord, 0.5), (AppD, 0.1), (D5, 0.1), (Prol, 0.1)]

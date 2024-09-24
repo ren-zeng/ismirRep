@@ -207,17 +207,17 @@ mergeDerDistr ruleProb derDist = (\(t, s) -> (Derivation (Just t), s)) <$> merge
 defaultProb :: NT Chord -> ProdRule Chord -> Double
 defaultProb (NTChord x y) r = case x of
   V -> case r of
-    RChord -> 0.5
-    RProl -> 0.2
-    RAppD -> 0.1
-    RD5 -> 0.1
-    RIV_V -> 0.1
+    Chord -> 0.5
+    Prol -> 0.2
+    AppD -> 0.1
+    D5 -> 0.1
+    IV_V -> 0.1
   _ -> case r of
-    RChord -> 0.5
-    RProl -> 0.2
-    RAppD -> 0.1
-    RD5 -> 0.2
-    RIV_V -> 0
+    Chord -> 0.5
+    Prol -> 0.2
+    AppD -> 0.1
+    D5 -> 0.2
+    IV_V -> 0
 
 -- >>>  derivationDistribution defaultProb testSurface
 -- [(Derivation (Just (Branch (NTChord I I) RProl [Branch (NTChord I I) RChord [Leaf (TChord I I)],Branch (NTChord I I) RD5 [Branch (NTChord V I) RIV_V [Branch (NTChord IV I) RChord [Leaf (TChord IV I)],Branch (NTChord V I) RChord [Leaf (TChord V I)]],Branch (NTChord I I) RChord [Leaf (TChord I I)]]])),2.5000000000000006e-4),(Derivation (Just (Branch (NTChord I I) RD5 [Branch (NTChord V I) RIV_V [Branch (NTChord IV I) RD5 [Branch (NTChord I I) RChord [Leaf (TChord I I)],Branch (NTChord IV I) RChord [Leaf (TChord IV I)]],Branch (NTChord V I) RChord [Leaf (TChord V I)]],Branch (NTChord I I) RChord [Leaf (TChord I I)]])),2.5000000000000006e-4)]

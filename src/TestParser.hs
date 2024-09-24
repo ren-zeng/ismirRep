@@ -8,22 +8,22 @@ import CYKParser (parseCYK)
 import Control.Monad.Search
 import Data.Foldable (minimumBy)
 import Data.Functor.Foldable
-import Data.List.Extra (minimumOn)
+import Data.List.Extra (minimumOn, nub, sortOn)
 import Data.Monoid (Sum (getSum))
 import Data.Tree
 import Diagrams
+import Diagrams.Prelude (white)
 import Grammar
 import ParsingTemplateGrammar
 import Preliminaries.TreeVisualizer (toTreeDiagram', writeSVG)
 import Preliminaries.Viz
 import TemplateGrammar
-import Text.Show.Unicode
 
 testTemplate :: Template (ProdRule Chord)
 testTemplate =
   minimumOn nRule $
     explainEvidence
-      ((fmap . fmap) (`TChord` I) [[I, IV, V, II, V, I]])
+      ((fmap . fmap) (`TChord` I) [[I, V, II, V, I]])
       (NTChord I I)
 
 testParse = minimumOn depth . parseCYK $ fmap (`TChord` I) $ concat . replicate 3 $ [I, II, V, I, V, I]
@@ -41,10 +41,33 @@ testParse = minimumOn depth . parseCYK $ fmap (`TChord` I) $ concat . replicate 
 -- testTree :: Tree String
 -- testTree = asTree testTemplate
 
-main =
-  writeSVG "testTemplate.svg" $
-    hsep 1 $
-      toTreeDiagram' <$> [asTree testTemplate, showMaybe <$> derivedRuleTree testTemplate, prettySymbol <$> derivedTree (NTChord I I) testTemplate]
+main = do
+  let testEvidence = (fmap . fmap) (`TChord` I) [[I, III], [II], [I]]
+  print testEvidence
+  let templates = explainEvidence testEvidence (NTChord I I)
+  print (length . nub $ derivedTree (NTChord I I) <$> templates)
+  let template = minimumOn nRule templates
+      d =
+        vsep
+          0
+          [ text (show $ prettyEvidence testEvidence)
+              <> (rect 3 1 # lw 0)
+                # fontSizeL 1
+                # bg white
+                # frame 1,
+            hsep
+              0
+              ( toTreeDiagram'
+                  <$> [ asTree template,
+                        showMaybe <$> derivedRuleTree template,
+                        prettySymbol <$> derivedTree (NTChord I I) template
+                      ]
+              )
+              # centerXY
+          ]
+          # bg white
+
+  writeSVG "testTemplate.svg" d
 
 -- main =
 --   writeSVG "testCYK.svg" $
