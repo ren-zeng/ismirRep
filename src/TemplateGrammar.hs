@@ -38,8 +38,8 @@ import TreeUtils
 import Prelude hiding (sum, (+))
 
 data Template a
-  = Template a
-  | Comp Int (Template a) (Template a)
+  = Id
+  | Template a
   | WithRep (Template a) Meta [Template a]
   deriving (Eq, Show, Functor)
 
@@ -60,7 +60,7 @@ instance (Grammar a) => Arity (ProdRule a) where
 
 instance (Arity a) => Arity (Template a) where
   arity (Template x) = arity x
-  arity (Comp _ x y) = arity x + arity y - 1
+  arity (Id) = 1
   arity (WithRep a m as) = sum $ arity <$> useMeta m a as
 
 class ArgTypes x a b where
@@ -71,9 +71,7 @@ instance (Grammar a) => ArgTypes (NT a) (ProdRule a) (Symbol a) where
 
 instance forall a. (Grammar a) => ArgTypes (NT a) (Template (ProdRule a)) (NT a) where
   argTypes x (Template r) = rights $ argTypes @(NT a) @(ProdRule a) @(Symbol a) x r
-  argTypes x (Comp i α β) = take (i - 1) (argTypes x α) ++ argTypes y β ++ drop i (argTypes x α)
-    where
-      y = argTypes @(NT a) @(Template (ProdRule a)) @(NT a) x α !! (i - 1)
+  argTypes x (Id) = [x]
   argTypes x (WithRep α m βs) = concat $ zipWith (argTypes @(NT a)) (argTypes x α) (useMeta m α βs)
 
 -- >>> useMeta [Star,New] (Template RD5) [Template RProl]
@@ -82,7 +80,7 @@ instance forall a. (Grammar a) => ArgTypes (NT a) (Template (ProdRule a)) (NT a)
 nRule :: Template (ProdRule a) -> Int
 nRule = cata $ \case
   TemplateF _ -> 1
-  CompF _ n1 n2 -> n1 + n2
+  IdF -> 1
   WithRepF n1 _ ns -> n1 + sum ns
 
 -- >>> nRule (WithRep (Template RProl) [New,RepLoc 1] [Template RChord])
@@ -104,7 +102,7 @@ expandNthThat n sat f (x : xs) =
 isLegal :: (_) => NT a -> Template (ProdRule a) -> Bool
 isLegal x = \case
   Template r -> r `elem` legalRule (Right x)
-  Comp i α β -> isLegal x α && isLegal (argTypes x α !! (i - 1)) β
+  Id -> True
   WithRep α m βs -> isLegal x α && and (zipWith isLegal (argTypes x α) (useMeta m α βs))
 
 expandWith :: (a -> Bool) -> [a -> [a]] -> [a] -> [a]
@@ -121,12 +119,7 @@ expandWith sat (f : fs) (x : xs) =
 applyTemplate :: (Grammar a) => NT a -> Template (ProdRule a) -> [Symbol a]
 applyTemplate x = \case
   Template r -> applyRule r x
-  Comp i α β ->
-    expandNthThat
-      (i - 1)
-      isRight
-      (\(Right nt) -> applyTemplate nt β)
-      (applyTemplate x α)
+  Id -> [Right x]
   WithRep α m βs ->
     expandWith
       isRight
@@ -153,12 +146,7 @@ growWith sat fs t = go fs locs t
 derivedTree :: (Grammar a) => NT a -> Template (ProdRule a) -> Tree (Symbol a)
 derivedTree x = \case
   Template r -> Node (Right x) $ (`Node` []) <$> applyRule r x
-  Comp i α β ->
-    growNthThat
-      (i - 1)
-      isRight
-      (\(Node (Right nt) []) -> derivedTree nt β)
-      (derivedTree x α)
+  Id -> Node (Right x) []
   WithRep α m βs ->
     growWith
       isRight
@@ -168,12 +156,7 @@ derivedTree x = \case
 derivedRuleTree :: forall a. (Grammar a) => Template (ProdRule a) -> Tree (Maybe (ProdRule a))
 derivedRuleTree = \case
   Template r -> Node (Just r) $ replicate (nArg r) (Node Nothing [])
-  Comp i α β ->
-    growNthThat
-      (i - 1)
-      isNothing
-      (\(Node Nothing []) -> derivedRuleTree β)
-      (derivedRuleTree α)
+  Id -> Node Nothing []
   WithRep α m βs ->
     growWith
       isNothing
@@ -186,7 +169,7 @@ derivedRuleTree = \case
 templateSize :: Template a -> Int
 templateSize = cata $ \case
   TemplateF _ -> 1
-  CompF _ x y -> x + y
+  IdF -> 0
   WithRepF x _ ys -> x + sum ys
 
 -- outs :: (Grammar a) => Template (ProdRule a) -> NT a

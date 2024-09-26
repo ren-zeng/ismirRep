@@ -39,8 +39,8 @@ freeVar :: Meta -> Int
 freeVar = foldr (\x -> if x == New then (+ 1) else id) 0
 
 prettyMeta :: Meta -> String
-prettyMeta m = printf "⟨%s⟩" . unwords $ (go <$> m)
+prettyMeta m = printf "⟨ %s ⟩" . unwords $ (go <$> m)
   where
     go New = "_"
-    go Star = "⋆"
+    go Star = "★"
     go (RepLoc i) = printf "%d" i

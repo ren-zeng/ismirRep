@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -17,6 +18,7 @@ import Diagrams.Color.XKCD (blueGreen)
 import Diagrams.Prelude
 import Diagrams.TwoD.Layout.Grid
 import Diagrams.TwoD.Layout.Tree
+import Grammar (ParseTree (..))
 
 closer :: (Functor f, Num a, Num (f a)) => a -> (f a -> f a -> t) -> f a -> f a -> t
 closer r f x y = f (x + (r *^ d)) (y - (r *^ d))
@@ -30,7 +32,7 @@ treeDiagram lay x =
     (lay x)
     # centerXY
     # frame 1
-    # pad 1.2
+    -- # pad 1.2
     # bg white
 
 treeDiagram' :: (_) => (a -> Diagram B) -> Tree a -> Diagram B
@@ -38,33 +40,34 @@ treeDiagram' (f :: a -> Diagram B) (x :: Tree a) =
   renderTree
     f
     (closer 0.25 (~~) # lwL 0.05) -- # lw 0.25
-    ( symmLayout'
-        ( with
-            & slHSep
-              .~ 3
-            & slVSep
-              .~ 3
-            & slWidth
-              .~ fromMaybe (0, 0)
-                . extentX
-            & slHeight
-              .~ fromMaybe (0, 0)
-                . extentY
-        )
-        x
-    )
+    (symmLayout x)
+    -- ( symmLayout'
+    --     ( with
+    --         & slHSep
+    --           .~ 3
+    --         & slVSep
+    --           .~ 3
+    --         & slWidth
+    --           .~ fromMaybe (0, 0)
+    --             . extentX
+    --         & slHeight
+    --           .~ fromMaybe (0, 0)
+    --             . extentY
+    --     )
+    --     x
+    -- )
     # centerXY
-    -- # frame 1
+    # frame 1
     -- # pad 1.2
     # bg white
 
 type ProofTree = Tree (String, String) -- (Type String, Constructor String)
 
-vsepRule d x y = vsep 1 [x, d <> hrule n, y]
-  where
-    n = max (width x) (width y)
+-- vsepRule d x y = vsep 0.3 [x, d <> hrule n, y]
+--   where
+--     n = max (width x) (width y)
 
-vsepTopRule x d y = vsep 1 [x <> hrule n, d, y] <> rect n 1
+vsepRule d x y = d <> beside (-unitY) (beside unitY (hrule n) x) y
   where
     n = max (width x) (width y)
 
@@ -76,6 +79,23 @@ proofTreeDiagram' (Node (x, c) ts) =
   vsepRule (text c # fontSizeL 0.5 # fc gray <> rect 4 1 # bg white) (text x # fontSizeL 1) ((centerX . hsep 1) (proofTreeDiagram' <$> ts))
     # lw 0.5
     # lc gray
+
+parseTreeDiagram :: (a -> Diagram B) -> (b -> Diagram B) -> ParseTree a b a -> Diagram B
+parseTreeDiagram drawSymbol drawRule = \case
+  (Leaf x) -> vsepRule mempty (drawSymbol x) mempty # lw 0
+  (Branch x r xs) ->
+    vsepRule
+      ( let ruleDiagram = drawRule r
+         in ruleDiagram
+              <> rect 1 0.5
+                # bg white
+      )
+      (drawSymbol x)
+      ( (centerXY . hsep 0.1)
+          (parseTreeDiagram drawSymbol drawRule <$> xs)
+      )
+      # lw 0.5
+      # lc gray
 
 upperEnclose d x y =
   appends (x <> (rect n 2 # lw none)) $

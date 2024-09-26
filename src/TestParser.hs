@@ -6,16 +6,18 @@ module TestParser where
 
 import CYKParser (parseCYK)
 import Control.Monad.Search
+import Data.Either
 import Data.Foldable (minimumBy)
 import Data.Functor.Foldable
-import Data.List.Extra (minimumOn, nub, sortOn)
+import Data.List.Extra (maximumOn, minimumOn, nub, sortOn)
 import Data.Monoid (Sum (getSum))
 import Data.Tree
 import Diagrams
 import Diagrams.Prelude (white)
 import Grammar
+import Meta
 import ParsingTemplateGrammar
-import Preliminaries.TreeVisualizer (toTreeDiagram', writeSVG)
+import Preliminaries.TreeVisualizer (toTreeDiagram', treeDiagram', writeSVG)
 import Preliminaries.Viz
 import TemplateGrammar
 
@@ -41,43 +43,32 @@ testParse = minimumOn depth . parseCYK $ fmap (`TChord` I) $ concat . replicate 
 -- testTree :: Tree String
 -- testTree = asTree testTemplate
 
+plotTemplate t = toTreeDiagram' . asTree $ t
+
 main = do
-  let testEvidence = (fmap . fmap) (`TChord` I) [[I, III], [II], [I]]
+  -- let testEvidence = (fmap . fmap) (`TChord` I) [[IV, V, I, IV, V, I]]
+  let testEvidence = [[TChord I I, TChord II (II `Of` (I `Of` I)), TChord V (II `Of` (I `Of` I)), TChord II (I `Of` I), TChord V (I `Of` I), TChord I I]]
   print testEvidence
   let templates = explainEvidence testEvidence (NTChord I I)
-  print (length . nub $ derivedTree (NTChord I I) <$> templates)
-  let template = minimumOn nRule templates
-      d =
+  print (length templates)
+  let bestTemplate = (!! 0) $ (sortOn nRule) templates
+  let d t =
         vsep
           0
-          [ text (show $ prettyEvidence testEvidence)
-              <> (rect 3 1 # lw 0)
-                # fontSizeL 1
-                # bg white
-                # frame 1,
+          [ text (show $ prettyEvidence testEvidence) # fontSizeL 0.3 # frame 1,
             hsep
               0
               ( toTreeDiagram'
-                  <$> [ asTree template,
-                        showMaybe <$> derivedRuleTree template,
-                        prettySymbol <$> derivedTree (NTChord I I) template
+                  <$> [ asTree t,
+                        showMaybe <$> derivedRuleTree t,
+                        prettySymbolTree $ derivedTree (NTChord I I) t
                       ]
               )
-              # centerXY
+              # centerXY,
+            parseTreeOfTreeDiagram t
           ]
           # bg white
+  print (nRule bestTemplate)
+  writeSVG "testTemplate.svg" $ vsep 1 $ d <$> [bestTemplate]
 
-  writeSVG "testTemplate.svg" d
-
--- main =
---   writeSVG "testCYK.svg" $
---     hsep 1 $
---       toTreeDiagram' <$> [prettySymbol <$> valTree testParse]
-
-showMaybe :: (Show a) => Maybe a -> String
-showMaybe = \case
-  Just x -> show x
-  Nothing -> "●"
-
--- ProgressCancelledException
 -- >>> main

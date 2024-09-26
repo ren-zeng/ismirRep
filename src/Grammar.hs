@@ -200,6 +200,14 @@ instance HasTrie Numeral where
   untrie = untrieGeneric unNumeralTrie
   enumerate = enumerateGeneric unNumeralTrie
 
+simplifyNumeral = \case
+  x `Of` I -> x
+  x `Of` y -> simplifyNumeral $ x `Of` simplifyNumeral y
+  x -> x
+
+-- >>> simplifyNumeral (III `Of` (I `Of` I))
+-- III
+
 isOf :: Numeral -> Bool
 isOf (_ `Of` _) = True
 isOf _ = False

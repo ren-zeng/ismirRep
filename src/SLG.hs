@@ -106,18 +106,18 @@ encodeTree (Identity t) = SLG (Identity s) b
       Node x [] -> (NodeC x [], mempty)
       Node x ts -> undefined
 
-pattern TemplateC x = CacheVal (TemplateF x)
+-- pattern TemplateC x = CacheVal (TemplateF x)
 
-pattern CompC i x y = CacheVal (CompF i x y)
+-- pattern CompC i x y = CacheVal (CompF i x y)
 
-pattern WithRepC x m ys = CacheVal (WithRepF x m ys)
+-- pattern WithRepC x m ys = CacheVal (WithRepF x m ys)
 
-testTemplateSLG :: SLG String Identity (Template Int)
-testTemplateSLG =
-  SLG
-    { start = Identity $ WithRepC (TemplateC 2) [Star, New] [CacheVar "b"],
-      bindings = fromList [("a", CompC 1 (TemplateC 10) (TemplateC 100)), ("b", CompC 2 (CacheVar "a") (CacheVar "a"))]
-    }
+-- testTemplateSLG :: SLG String Identity (Template Int)
+-- testTemplateSLG =
+--   SLG
+--     { start = Identity $ WithRepC (TemplateC 2) [Star, New] [CacheVar "b"],
+--       bindings = fromList [("a", CompC 1 (TemplateC 10) (TemplateC 100)), ("b", CompC 2 (CacheVar "a") (CacheVar "a"))]
+--     }
 
 -- >>> decode testTemplateSLG
 -- WithRep (Template 2) [Star,New] [Comp 2 (Comp 1 (Template 10) (Template 100)) (Comp 1 (Template 10) (Template 100))]

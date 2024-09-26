@@ -13,30 +13,19 @@
 
 module ParsingTemplateGrammar (explainEvidence) where
 
-import CYKParser (parseCYK)
-import Control.Applicative (Alternative, asum)
-import Control.Arrow
+import Control.Applicative (asum)
 import Control.Monad (guard, zipWithM)
 import Control.Monad.Search
-import Data.Either (isRight, lefts, rights)
+import Data.Either (isRight, lefts)
 import Data.Function
-import Data.Functor.Foldable (hylo)
 import Data.List hiding (product, sum)
 import Data.List.Extra (notNull)
 import Data.List.Split
-import Data.Maybe (catMaybes, isJust, isNothing)
-import Data.MemoTrie (HasTrie, memo2, memoFix, mup)
-import Data.Monoid (Sum)
+import Data.MemoTrie (HasTrie, memoFix)
 import Data.Ord (comparing)
-import Data.Semiring hiding ((-))
-import Data.Tree
 import GHC.Base hiding (One, Symbol, foldr, mapM)
 import Grammar hiding (Plus)
-import LazyPPL hiding (Tree)
-import LazyPPL.Distributions (uniformdiscrete)
 import Meta
-import Preliminaries.Viz (asTree)
-import SemiringParsing
 import TemplateGrammar
 import Prelude hiding (product, sequence, sum, (+))
 
@@ -194,7 +183,7 @@ oneHoleParse f x l_L l_R =
             let [y, _] = argTypes x α
             β <- f y [l2]
 
-            return $ Comp 1 α β
+            return $ WithRep α [New, New] [β, Id]
         )
         ( do
             [l1, l2, l3] <- splitsN 3 l_L
@@ -209,7 +198,7 @@ oneHoleParse f x l_L l_R =
             let [_, z] = argTypes x α
             β <- f z [l3]
 
-            return $ Comp 2 α β
+            return $ WithRep α [New, New] [Id, β]
         )
         ( do
             [l2, l3, l4] <- splitsN 3 l_R
@@ -291,7 +280,7 @@ twoHoleParse f x l_L l_M l_R =
             let [y, _] = argTypes x α
             β <- f y [l2, l3]
 
-            return $ Comp 1 α β
+            return $ WithRep α [New, New] [β, Id]
         )
         ( do
             [[l1, l2], [l3, l4], [l5]] <- zipWithM splitsN [2, 2, 1] [l_L, l_M, l_R]
@@ -304,7 +293,7 @@ twoHoleParse f x l_L l_M l_R =
             let [_, z] = argTypes x α
             β <- f z [l3, l4]
 
-            return $ Comp 2 α β
+            return $ WithRep α [New, New] [Id, β]
         )
         ( do
             [[l1], [l2, l3], [l4, l5]] <- zipWithM splitsN [1, 2, 2] [l_L, l_M, l_R]
