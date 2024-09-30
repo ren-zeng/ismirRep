@@ -20,20 +20,15 @@ module TemplateGrammar where
 
 import Control.Applicative
 import Control.Monad
-import Control.Monad.Bayes.Class (Log, MonadDistribution (uniformD), MonadFactor, condition, score)
-import Control.Monad.Bayes.Sampler.Strict
-import Data.Either (isLeft, isRight, lefts, rights)
-import Data.Fix (hoistFix)
-import Data.Functor.Base hiding (head, tail)
+import Data.Either
 import Data.Functor.Foldable
 import Data.Functor.Foldable.TH (makeBaseFunctor)
-import Data.List.Extra (replace)
 import Data.Maybe (isNothing)
 import Data.Semiring hiding ((-))
 import Data.Tree
-import Grammar
+import GrammarInstances
 import Meta
-import PCFG (surface)
+import Preliminaries.Grammar
 import TreeUtils
 import Prelude hiding (sum, (+))
 
@@ -171,43 +166,3 @@ templateSize = cata $ \case
   TemplateF _ -> 1
   IdF -> 0
   WithRepF x _ ys -> x + sum ys
-
--- outs :: (Grammar a) => Template (ProdRule a) -> NT a
--- outs = error "not implemented outs"
-
--- mergeTemplate :: (Grammar a) => [Template (ProdRule a)] -> [Template (ProdRule a)]
--- mergeTemplate = error "not implemented mergeTemplate"
-
--- frontierWithHole :: Int -> [a] -> [[a]]
--- frontierWithHole 0 l = [l]
--- frontierWithHole n l = concat [seg p l | p <- intPartition 2 n]
-
--- -- >>> frontierWithHole 1 "abcde"
--- -- ProgressCancelledException
-
--- seg :: [Int] -> [a] -> [[a]]
--- seg ns l = foldr mergeFrontier [] [frontierWithHole n l | n <- ns]
-
--- -- >>> seg [1,1] "abcde"
--- -- ProgressCancelledException
-
--- mergeFrontier xs [] = xs
--- mergeFrontier xs ys = init xs ++ [last xs <> head ys] ++ tail ys
-
--- -- >>> mergeFrontier ["abc","de","l"] ["1234","56","789"]
--- -- ["abc","de","l1234","56","789"]
-
--- intPartition' :: Int -> Int -> Int -> [[Int]]
--- intPartition' mx k n
---   | n < 0 = []
---   | k == 1, n >= 0, n <= mx = [[n]]
---   | k > 0 = do
---       a <- [0 .. mx]
---       (a :) <$> intPartition' mx (k - 1) (n - a)
---   | otherwise = []
-
--- intPartition :: Int -> Int -> [[Int]]
--- intPartition mx n = concat [intPartition' mx k n | k <- [0 .. mx]]
-
--- -- >>> intPartition 2 0
--- -- [[0],[0,0]]

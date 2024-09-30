@@ -4,15 +4,6 @@
 
 module Meta where
 
-import Control.Monad
-import Control.Monad.Bayes.Class
-import Control.Monad.Bayes.Enumerator (toEmpirical)
-import Control.Monad.Bayes.Population (fromWeightedList)
-import Control.Monad.Bayes.Sampler.Strict (sampler)
-import Data.Functor.Identity (Identity)
-import Data.List.Split (sepBy)
-import Data.Vector (fromList, toList)
-import Grammar
 import Text.Printf
 
 data RepSymbol = New | RepLoc Int | Star deriving (Show, Eq, Ord)

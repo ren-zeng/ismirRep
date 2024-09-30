@@ -16,15 +16,10 @@ module SemiringParsing where
 import CYKParser
 import Control.Arrow (Arrow (first))
 import Control.Monad
-import Data.Function (fix)
-import Data.Maybe (catMaybes, mapMaybe)
-import Data.MemoTrie
 import Data.Semiring
-import GHC.Generics (Generic)
-import Grammar hiding (Plus)
-import PCFG
+import GrammarInstances hiding (Plus)
+import Preliminaries.Grammar hiding (Plus)
 import SLG
-import TemplateGrammar
 import Prelude hiding (product, sum, (*), (+))
 
 data SemiringOver a = SemiringOver

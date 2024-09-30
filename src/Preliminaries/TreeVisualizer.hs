@@ -18,7 +18,7 @@ import Diagrams.Color.XKCD (blueGreen)
 import Diagrams.Prelude
 import Diagrams.TwoD.Layout.Grid
 import Diagrams.TwoD.Layout.Tree
-import Grammar (ParseTree (..))
+import Preliminaries.Grammar (ParseTree (..))
 
 closer :: (Functor f, Num a, Num (f a)) => a -> (f a -> f a -> t) -> f a -> f a -> t
 closer r f x y = f (x + (r *^ d)) (y - (r *^ d))

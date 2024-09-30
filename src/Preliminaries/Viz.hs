@@ -15,8 +15,9 @@ import Diagrams
 import Diagrams.Backend.SVG
 import Diagrams.Prelude
 import Diagrams.TwoD.Layout.Tree (renderTree, slHSep, slHeight, slVSep, slWidth, symmLayout, symmLayout')
-import Grammar
+import GrammarInstances
 import Meta
+import Preliminaries.Grammar
 import Preliminaries.TreeVisualizer (closer, parseTreeDiagram, toTreeDiagram', treeDiagram')
 import TemplateGrammar
 import Text.Printf (printf)
