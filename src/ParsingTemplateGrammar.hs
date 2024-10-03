@@ -1,15 +1,10 @@
 {-# LANGUAGE ApplicativeDo #-}
-{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 
 module ParsingTemplateGrammar (explainEvidence, baseParse) where
 
@@ -25,10 +20,12 @@ import Data.MemoTrie (HasTrie, memoFix)
 import Data.Monoid (Sum (Sum, getSum))
 import Data.Ord (comparing)
 import GHC.Base hiding (One, Symbol, foldr, mapM)
+import GrammarInstances
 import Meta
 import Preliminaries.Grammar hiding (Plus)
 import TemplateGrammar
-import Prelude hiding (product, sequence, sum, (+))
+import Text.Printf
+import Prelude
 
 instance (Ord a, Monoid a) => MonadFail (Search a) where
   fail _ = mzero
@@ -50,37 +47,43 @@ splitsN n l
       ls <- splitsN (n - 1) l2
       return (l1 : ls)
 
-asTuple3 xs = do [a, b, c] <- xs; return (a, b, c)
+evidence :: (Grammar a) => NT a -> Template (ProdRule a) -> Maybe [[T a]]
+evidence x t = splitEvidence <$> applyTemplate x t
 
-asTuple4 xs = do [a, b, c, d] <- xs; return (a, b, c, d)
+{-
 
-asTuple5 xs = do [a, b, c, d, e] <- xs; return (a, b, c, d, e)
+>>> example = WithRep (Template D5) [Star,New] [Template Chord]
 
-evidence :: (Grammar a) => NT a -> Template (ProdRule a) -> [[T a]]
-evidence x = splitEvidence . applyTemplate x
+>>> evidence (NTChord I I) example
+Just [[],[],[TChord I I]]
 
--- >>> evidence (NTChord I I) ( Comp 1 (Template RD5) (Comp 1 (Template RD5) (Template RChord)))
--- [[TChord II I],[],[]]
+-}
+
+hasEvidence :: (Grammar a) => NT a -> Template (ProdRule a) -> [[T a]] -> Bool
+hasEvidence x t e = evidence x t == Just e
 
 topBy :: (Ord b) => (a -> b) -> [a] -> [a]
 topBy f = take 1 . sortBy (comparing f)
 
 explainEvidence' ::
-  (Grammar a, MonadSearch (Sum Int) m, _) =>
+  (Grammar a, _) =>
   (NT a -> [[T a]] -> m (Template (ProdRule a))) ->
   NT a ->
   [[T a]] ->
   m (Template (ProdRule a))
 explainEvidence' f x ls =
-  case ls of
-    [[], [], []] -> baseParse x ls
-    _ ->
-      baseParse x ls
-        <|> case ls of
-          [l] -> zeroHoleParse f x l
-          [l1, l2] -> oneHoleParse f x l1 l2
-          [l1, l2, l3] -> twoHoleParse f x l1 l2 l3
-          _ -> mzero
+  cost' 1
+    >> ( case ls of
+           [[], [], []] -> baseParse x ls
+           _ ->
+             baseParse x ls
+               <|> ( case ls of
+                       [l] -> zeroHoleParse f x l
+                       [l1, l2] -> oneHoleParse f x l1 l2
+                       [l1, l2, l3] -> twoHoleParse f x l1 l2 l3
+                       _ -> empty
+                   )
+       )
 
 explainEvidence'' ::
   (Grammar a, _) =>
@@ -92,7 +95,7 @@ explainEvidence'' f ls x = explainEvidence' (flip f) x ls
 
 -- | Parsing for template grammar
 explainEvidence ::
-  (Grammar a, MonadPlus m, HasTrie (NT a), HasTrie (T a), MonadSearch (Sum Int) m) =>
+  (Grammar a, MonadPlus m, HasTrie (NT a), HasTrie (T a), _) =>
   [[T a]] ->
   NT a ->
   m (Template (ProdRule a))
@@ -100,24 +103,18 @@ explainEvidence = memoFix2 explainEvidence''
 
 memoFix2 f = memoFix (\g a -> memoFix (\h b -> f g a b))
 
--- >>> asTree . head $ explainEvidence (NTChord I I)  [[TChord x I | x<- [II,V,I,V,I]]]
--- Node {rootLabel = "withRep", subForest = [Node {rootLabel = "comp", subForest = [Node {rootLabel = "2", subForest = []},Node {rootLabel = "withRep", subForest = [Node {rootLabel = "withRep", subForest = [Node {rootLabel = "comp", subForest = [Node {rootLabel = "2", subForest = []},Node {rootLabel = "lifting", subForest = [Node {rootLabel = "RProl", subForest = []}]},Node {rootLabel = "comp", subForest = [Node {rootLabel = "2", subForest = []},Node {rootLabel = "lifting", subForest = [Node {rootLabel = "RD5", subForest = []}]},Node {rootLabel = "lifting", subForest = [Node {rootLabel = "RChord", subForest = []}]}]}]},Node {rootLabel = "[New,New]", subForest = []},Node {rootLabel = "\10754", subForest = [Node {rootLabel = "lifting", subForest = [Node {rootLabel = "RD5", subForest = []}]},Node {rootLabel = "lifting", subForest = [Node {rootLabel = "RChord", subForest = []}]}]}]},Node {rootLabel = "[New,New]", subForest = []},Node {rootLabel = "\10754", subForest = [Node {rootLabel = "lifting", subForest = [Node {rootLabel = "RD5", subForest = []}]},Node {rootLabel = "lifting", subForest = [Node {rootLabel = "RChord", subForest = []}]}]}]},Node {rootLabel = "lifting", subForest = [Node {rootLabel = "RChord", subForest = []}]}]},Node {rootLabel = "[New]", subForest = []},Node {rootLabel = "\10754", subForest = [Node {rootLabel = "lifting", subForest = [Node {rootLabel = "RChord", subForest = []}]}]}]}
-
--- >>> length $ parseCYK  [TChord x I | x <- concat $ replicate 1 [I,V,I,II,V,I]]
--- 3
-
 baseParse ::
-  (MonadPlus m, Grammar a, MonadSearch (Sum Int) m) =>
+  (MonadPlus m, Grammar a, _) =>
   NT a ->
   [[T a]] ->
   m (Template (ProdRule a))
 baseParse x ls =
   foldSum
-    (\t -> do cost' 1; return t)
+    (\t -> return t)
     ( do
         r <- legalRule (Right x)
         let t = Template r
-        guard (evidence x t == ls)
+        guard (hasEvidence x t ls)
         return t
     )
 
@@ -132,14 +129,17 @@ zeroHoleParse f x l =
     [ foldSum
         ( \(l1, l2, l3, l4, l5) -> do
             α <- f x [l1, l3, l5]
-            let [y, z] = argTypes x α
+            let Just [y, z] = argTypes x α
             β <- f y [l2]
-            γ <- f z [l4]
-            if β == γ
-              then
-                return (WithRep α [New, RepLoc 1] [β])
-              else
-                return (WithRep α [New, New] [β, γ])
+            asum
+              [ do
+                  guard $ hasEvidence z β [l4]
+                  return $ WithRep α [New, RepLoc 1] [β],
+                do
+                  γ <- f z [l4]
+                  guard $ γ /= β
+                  return $ WithRep α [New, New] [β, γ]
+              ]
         )
         ( do
             [l1, l2, l3, l4, l5] <- splitsN 5 l
@@ -150,9 +150,8 @@ zeroHoleParse f x l =
         ),
       foldSum
         ( \(l1, l2, l3) -> do
-            cost' 1
             α <- f x [l1, l3]
-            let [y] = argTypes x α
+            let Just [y] = argTypes x α
             β <- f y [l2]
             return (WithRep α [New] [β])
         )
@@ -160,7 +159,6 @@ zeroHoleParse f x l =
             [l1, l2, l3] <- splitsN 3 l
             guard (l2 /= l)
             guard (notNull l2)
-
             return (l1, l2, l3)
         )
     ]
@@ -178,9 +176,8 @@ oneHoleParse f x l_L l_R =
   asum
     [ foldSum
         ( \(l1, l2, l3, l4) -> do
-            cost' 1
             α <- f x [l1, l3, l4]
-            let [y, _] = argTypes x α
+            let Just [y, _] = argTypes x α
             β <- f y [l2]
             return $ WithRep α [New, New] [β, Id]
         )
@@ -188,14 +185,12 @@ oneHoleParse f x l_L l_R =
             [l1, l2, l3] <- splitsN 3 l_L
             let l4 = l_R
             guard (notNull l2)
-
             return (l1, l2, l3, l4)
         ),
       foldSum
         ( \(l1, l2, l3, l4) -> do
-            cost' 1
             α <- f x [l1, l2, l4]
-            let [_, z] = argTypes x α
+            let Just [_, z] = argTypes x α
             β <- f z [l3]
             return $ WithRep α [New, New] [Id, β]
         )
@@ -203,30 +198,27 @@ oneHoleParse f x l_L l_R =
             [l2, l3, l4] <- splitsN 3 l_R
             guard (notNull l3)
             let l1 = l_L
-
             return (l1, l2, l3, l4)
         ),
       foldSum
         ( \(l1, l2, l3, l4) -> do
-            cost' 1
             α <- f x [l1, l4]
-            let [y] = argTypes x α
-            β <- f y [l2, l3]
-            (m, βs) <-
-              if α == β
-                then do
-                  return ([Star], [])
-                else do
-                  return ([New], [β])
-
-            return $ WithRep α m βs
+            let Just [y] = argTypes x α
+            asum
+              [ do
+                  guard $ hasEvidence y α [l2, l3]
+                  return $ WithRep α [Star] [],
+                do
+                  β <- f y [l2, l3]
+                  guard $ β /= α
+                  return $ WithRep α [New] [β]
+              ]
         )
         ( do
             [l1, l2] <- splitsN 2 l_L
             [l3, l4] <- splitsN 2 l_R
             guard ([l1, l4] /= [l_L, l_R])
             guard ([l2, l3] /= [l_L, l_R])
-
             return (l1, l2, l3, l4)
         )
     ]
@@ -243,53 +235,53 @@ twoHoleParse f x l_L l_M l_R =
   asum
     [ foldSum
         ( \(l1, l2, l3, l4, l5, l6, l7) -> do
-            cost' 1
             α <- f x [l1, l5, l7]
-            guard (notNull l6)
-            let [y, z] = argTypes x α
-            β1 <- f y [l2, l3, l4]
+            let Just [y, z] = argTypes x α
             β <- f z [l6]
-            (m, βs) <-
-              if α == β1
-                then do
-                  return ([Star, New], [β])
-                else do
-                  return ([New, New], [β1, β])
-            return $ WithRep α m βs
+            asum
+              [ do
+                  guard (hasEvidence y α [l2, l3, l4])
+                  return $ WithRep α [Star, New] [β],
+                do
+                  β1 <- f y [l2, l3, l4]
+                  guard (β /= β1)
+                  return $ WithRep α [New, New] [β1, β]
+              ]
         )
         ( do
             [l1, l2] <- splitsN 2 l_L
             let l3 = l_M
             [l4, l5, l6, l7] <- splitsN 4 l_R
+            guard (notNull l6)
             guard ([l_L, l_M, l_R] `notElem` [[l1, l5, l7], [l2, l3, l4]])
             return (l1, l2, l3, l4, l5, l6, l7)
         ),
       foldSum
         ( \(l1, l2, l3, l4, l5, l6, l7) -> do
-            cost' 1
             α <- f x [l1, l3, l7]
-            guard (notNull l2)
-            let [y, z] = argTypes x α
+            let Just [y, z] = argTypes x α
             β <- f y [l2]
-            β1 <- f z [l4, l5, l6]
-            if α == β1
-              then do
-                return $ WithRep α [New, Star] [β]
-              else do
-                return $ WithRep α [New, New] [β, β1]
+            asum
+              [ do
+                  guard $ hasEvidence z α [l4, l5, l6]
+                  return $ WithRep α [New, Star] [β],
+                do
+                  β1 <- f z [l4, l5, l6]
+                  guard $ β1 /= α
+                  return $ WithRep α [New, New] [β, β1]
+              ]
         )
         ( do
             [[l1, l2, l3, l4], [l5], [l6, l7]] <- zipWithM splitsN [4, 1, 2] [l_L, l_M, l_R]
             guard ([l_L, l_M, l_R] `notElem` [[l1, l3, l7], [l4, l5, l6]])
+            guard (notNull l2)
             return (l1, l2, l3, l4, l5, l6, l7)
         ),
       foldSum
         ( \(l1, l2, l3, l4, l5) -> do
-            cost' 1
             α <- f x [l1, l4, l5]
-            let [y, _] = argTypes x α
+            let Just [y, _] = argTypes x α
             β <- f y [l2, l3]
-
             return $ WithRep α [New, New] [β, Id]
         )
         ( do
@@ -299,11 +291,9 @@ twoHoleParse f x l_L l_M l_R =
         ),
       foldSum
         ( \(l1, l2, l3, l4, l5) -> do
-            cost' 1
             α <- f x [l1, l2, l5]
-            let [_, z] = argTypes x α
+            let Just [_, z] = argTypes x α
             β <- f z [l3, l4]
-
             return $ WithRep α [New, New] [Id, β]
         )
         ( do
@@ -313,9 +303,8 @@ twoHoleParse f x l_L l_M l_R =
         ),
       foldSum
         ( \(l1, l2, l3, l4, l5) -> do
-            cost' 1
             α <- f x [l1, l5]
-            let [y] = argTypes x α
+            let Just [y] = argTypes x α
             β <- f y [l2, l3, l4]
             return $ WithRep α [New] [β]
         )
@@ -325,124 +314,22 @@ twoHoleParse f x l_L l_M l_R =
         ),
       foldSum
         ( \(l1, l2, l3, l4, l5, l6, l7) -> do
-            cost' 1
             α <- f x [l1, l4, l7]
-            let [y, z] = argTypes x α
+            let Just [y, z] = argTypes x α
             β <- f y [l2, l3]
-            γ <- f z [l5, l6]
-            if β == γ
-              then do
-                return $ WithRep α [New, RepLoc 1] [β]
-              else do
-                return $ WithRep α [New, New] [β, γ]
+            asum
+              [ do
+                  guard $ hasEvidence z β [l5, l6]
+                  return $ WithRep α [New, RepLoc 1] [β],
+                do
+                  γ <- f z [l5, l6]
+                  guard $ γ /= β
+                  return $ WithRep α [New, New] [β, γ]
+              ]
         )
         ( do
             [[l1, l2], [l3, l4, l5], [l6, l7]] <- zipWithM splitsN [2, 3, 2] [l_L, l_M, l_R]
             guard ([l_L, l_M, l_R] /= [l1, l4, l7])
-
             return (l1, l2, l3, l4, l5, l6, l7)
         )
     ]
-
--- zeroHoleParse :: (Semiring b) => ([[a]] -> b) -> ([b] -> [b]) -> [a] -> b
--- zeroHoleParse f merges l =
---   (foldMapT . foldMapT . merges $ f)
---     [ do
---         [l1, l2, l3] <- splitsN 3 l
---         return [[l1, l3], [l2]],
---       do
---         [l1, l2, l3, l4, l5] <- splitsN 5 l
---         return [[l1, l3, l5], [l2], [l4]]
---     ]
-
--- oneHoleParse :: (Semiring b) => ([[a]] -> b) -> [a] -> [a] -> b
--- oneHoleParse f l_L l_R =
---   (foldMapT . foldMapT . foldMapP $ f)
---     [ do
---         [l1, l2] <- splitsN 2 l_L
---         [l3, l4] <- splitsN 2 l_R
---         return [[l1, l4], [l2, l3]],
---       do
---         let l1 = l_L
---         [l2, l3, l4] <- splitsN 3 l_R
---         return [[l1, l2, l4], [l3]],
---       do
---         let l4 = l_L
---         [l1, l2, l3] <- splitsN 3 l_L
---         return [[l1, l3, l4], [l2]]
---     ]
-
--- twoHoleParse :: (Semiring b) => ([[a]] -> b) -> [a] -> [a] -> [a] -> b
--- twoHoleParse f l_L l_M l_R =
---   (foldMapT . foldMapT . foldMapP $ f)
---     [ do
---         [l1, l2] <- splitsN 2 l_L
---         let l3 = l_M
---         [l4, l5, l6, l7] <- splitsN 4 l_R
---         return [[l1, l5, l7], [l2, l3, l4], [l6]]
---     ]
-
--- elementaryMerge :: (Grammar a) => NT a -> [Template (ProdRule a)] -> [[T a]] -> FreeSemiring (TemplateItem a)
--- elementaryMerge x elementary l = sum $ do
---   t <- elementary
---   guard (evidence x t == l)
---   return $ Val (Item x t l)
-
--- elementarySolve :: (Grammar a) => [Template (ProdRule a)] -> TemplateItem a -> FreeSemiring (TemplateItem a)
--- elementarySolve elementary (Item x l)
---   | t `elem` elementary && evidence x t == l = Val (Item x t l)
---   | otherwise = Zero
-
--- possibleCauses :: (Grammar a) => (NT a -> [Template (ProdRule a)]) -> TemplateItem a -> FreeSemiring (TemplateItem a)
--- possibleCauses elementary x@(Item nt e) =
---   (sum . fmap ($ x))
---     [ elementarySolve (elementary nt),
---       ind_0holeβ1,
---       ind_0holeβ1γ1,
---       ind_0holeβ1β1
---     ]
-
--- >>> possibleCauses elementary
-
--- solveItem :: (Semiring b, Grammar a) => [NT a -> Template (ProdRule a)] -> TemplateItem a -> b
--- solveItem elementary = hylo evalSemiring (possibleCauses elementary)
-
--- testSolve =
---   simpl $
---     possibleCauses (Template <$> rules) $
---       Item
---         (NTChord I I)
---         (WithRep (Template RProl) [New, RepLoc 1] [Template RChord])
---         [[TChord I I, TChord I I]]
-
--- >>> testSolve
--- Plus (Times (Val (Item (NTChord I I) (Template RProl) [[],[],[TChord I I,TChord I I]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) One))) (Plus (Times (Val (Item (NTChord I I) (Template RProl) [[],[],[TChord I I]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[TChord I I]])) One))) (Plus (Times (Val (Item (NTChord I I) (Template RProl) [[],[],[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[TChord I I,TChord I I]])) One))) (Plus (Times (Val (Item (NTChord I I) (Template RProl) [[],[TChord I I],[TChord I I]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) One))) (Plus (Times (Val (Item (NTChord I I) (Template RProl) [[],[TChord I I],[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[TChord I I]])) One))) (Plus (Times (Val (Item (NTChord I I) (Template RProl) [[],[TChord I I,TChord I I],[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) One))) (Plus (Times (Val (Item (NTChord I I) (Template RProl) [[],[],[TChord I I]])) (Times (Val (Item (NTChord I I) (Template RChord) [[TChord I I]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) One))) (Plus (Times (Val (Item (NTChord I I) (Template RProl) [[],[],[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[TChord I I]])) (Times (Val (Item (NTChord I I) (Template RChord) [[TChord I I]])) One))) (Plus (Times (Val (Item (NTChord I I) (Template RProl) [[],[TChord I I],[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[TChord I I]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) One))) (Plus (Times (Val (Item (NTChord I I) (Template RProl) [[],[],[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[TChord I I,TChord I I]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) One))) (Plus (Times (Val (Item (NTChord I I) (Template RProl) [[TChord I I],[],[TChord I I]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) One))) (Plus (Times (Val (Item (NTChord I I) (Template RProl) [[TChord I I],[],[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[TChord I I]])) One))) (Plus (Times (Val (Item (NTChord I I) (Template RProl) [[TChord I I],[TChord I I],[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) One))) (Plus (Times (Val (Item (NTChord I I) (Template RProl) [[TChord I I],[],[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[TChord I I]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) One))) (Plus (Times (Val (Item (NTChord I I) (Template RProl) [[TChord I I,TChord I I],[],[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) (Times (Val (Item (NTChord I I) (Template RChord) [[]])) One))) Zero))))))))))))))
-
--- >>>  splitsN 3 [1,2,3,4]
--- [[[],[],[1,2,3,4]],[[],[1],[2,3,4]],[[],[1,2],[3,4]],[[],[1,2,3],[4]],[[],[1,2,3,4],[]],[[1],[],[2,3,4]],[[1],[2],[3,4]],[[1],[2,3],[4]],[[1],[2,3,4],[]],[[1,2],[],[3,4]],[[1,2],[3],[4]],[[1,2],[3,4],[]],[[1,2,3],[],[4]],[[1,2,3],[4],[]],[[1,2,3,4],[],[]]]
-
--- base_0hole :: (Grammar a) => TemplateItem a -> FreeSemiring (TemplateItem a)
--- base_0hole = error "base_0hole not implemented"
-
--- ind_0holeβ1 :: (Grammar a) => TemplateItem a -> FreeSemiring (TemplateItem a)
--- ind_0holeβ1 (Item x [l]) = sum $ do
---   [l1, l2, l3] <- splitsN 3 l
---   let [y] = argTypes x α
---   return $ product (Val <$> [Item x [l1, l3], Item y [l2]])
--- ind_0holeβ1 _ = zero
-
--- ind_0holeβ1γ1 :: (Grammar a) => TemplateItem a -> FreeSemiring (TemplateItem a)
--- ind_0holeβ1γ1 = \case
---   Item x [l] -> sum $ do
---     [l1, l2, l3, l4, l5] <- splitsN 5 l
---     let [y, z] = argTypes x α
---     return $ (product . fmap Val) [Item x  [l1, l3, l5], Item  β [l2], Item z  [l4]]
---   _ -> zero
-
--- ind_0holeβ1β1 :: (Grammar a) => TemplateItem a -> FreeSemiring (TemplateItem a)
--- ind_0holeβ1β1 = \case
---   Item x [l] -> sum $ do
---     [l1, l2, l3, l4, l5] <- splitsN 5 l
---     let [y, z] = argTypes x α
---     return $ (product . fmap Val) [Item x [l1, l3, l5], Item y  [l2], Item z [l4]]
---   _ -> zero

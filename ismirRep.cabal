@@ -25,23 +25,20 @@ source-repository head
 
 library
   exposed-modules:
-      BayesianLens
-      Class
       CYKParser
-      Grammar
-      HelloAStar
-      HelloLazyPPL
-      HelloMonadBayes
+      GrammarInstances
+      Hello.HelloAStar
+      Hello.HelloLazyPPL
+      Hello.HelloMonadBayes
       Meta
       ParsingTemplateGrammar
-      PCFG
+      Preliminaries.Grammar
       Preliminaries.TreeVisualizer
       Preliminaries.Viz
       Preprocessing.JazzGrammar
       Preprocessing.Main
       Preprocessing.MusicTheory
       Preprocessing.TreeBankParser
-      ProbTemplate
       SemiringParsing
       SLG
       TemplateGrammar

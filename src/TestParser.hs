@@ -22,6 +22,7 @@ import Preliminaries.Grammar
 import Preliminaries.TreeVisualizer (toTreeDiagram', treeDiagram', writeSVG)
 import Preliminaries.Viz
 import TemplateGrammar
+import Text.Printf
 
 testParse = minimumOn depth . parseCYK $ fmap (`TChord` I) $ concat . replicate 3 $ [I, II, V, I, V, I]
   where
@@ -46,36 +47,42 @@ explainEvidenceM e x = do
   return t
 
 -- >>> runSearchBest $ explainEvidence  ((fmap . fmap) (`TChord` I) [[I,I]]) (NTChord I I)
--- Just (Sum {getSum = 4},WithRep (Template Prol) [New,RepLoc 1] [Template Chord])
+-- Just (Sum {getSum = 5},WithRep (Template Prol) [New,RepLoc 1] [Template Chord])
 
 main = do
-  -- let testEvidence = (fmap . fmap) (`TChord` I) [[V, IV, V, I]]
-  let testEvidence = [[TChord I I, TChord II (II `Of` (I `Of` I)), TChord V (II `Of` (I `Of` I)), TChord II (I `Of` I), TChord V (I `Of` I), TChord I I]]
+  let testEvidence = (fmap . fmap) (`TChord` I) [[II, V, I, II, V, I, II, V, I]]
+  -- let testEvidence = [[TChord I I, TChord II (II `Of` (I `Of` I)), TChord V (II `Of` (I `Of` I)), TChord II (I `Of` I), TChord V (I `Of` I), TChord I I]]
   print testEvidence
   let templates = explainEvidence testEvidence (NTChord I I)
   -- print (length templates)
+  let (Sum s, bestTemplate) = head $ runSearch @(Sum Int) templates
+
   -- let bestTemplate = minimumOn nRule templates
-  case runSearchBest templates of
-    Nothing -> return ()
-    Just (s, bestTemplate) -> do
-      let d t =
-            vsep
-              0
-              [ text (show $ prettyEvidence testEvidence) # fontSizeL 0.3 # frame 1,
-                hsep
-                  0
-                  ( toTreeDiagram'
-                      <$> [ asTree t,
-                            showMaybe <$> derivedRuleTree t,
-                            prettySymbolTree $ derivedTree (NTChord I I) t
-                          ]
-                  )
-                  # centerXY,
-                parseTreeOfTreeDiagram t
-              ]
-              # bg white
-      print (nRule bestTemplate)
-      writeSVG "testTemplateAStar.svg" $ vsep 1 $ d <$> [bestTemplate]
+  --     s = nRule bestTemplate
+
+  -- case runSearchBest templates of
+  --   Nothing -> return ()
+  --   Just (s, bestTemplate) ->
+  do
+    print bestTemplate
+    let d t =
+          vsep
+            0
+            [ text (show $ prettyEvidence testEvidence) # fontSizeL 0.3 # frame 1,
+              hsep
+                0
+                [ vsep 1 [toTreeDiagram' $ asTree t, text (printf "cost = %d" s) # fontSizeL 0.3],
+                  toTreeDiagram' $ showMaybe <$> derivedRuleTree t,
+                  toTreeDiagram' $ prettySymbolTree $ derivedTree (NTChord I I) t
+                ]
+                # centerXY,
+              parseTreeOfTreeDiagram t
+              -- frame 1 . text $ show $ applyTemplate (NTChord I I) bestTemplate,
+              -- (text $ show bestTemplate) # fontSizeL 0.3 # frame 1
+            ]
+            # bg white
+    print (nRule bestTemplate)
+    writeSVG "testTemplateAStar.svg" $ vsep 1 $ d <$> [bestTemplate]
 
 -- >>> main
 -- ProgressCancelledException
