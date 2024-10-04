@@ -65,6 +65,17 @@ hasEvidence x t e = evidence x t == Just e
 topBy :: (Ord b) => (a -> b) -> [a] -> [a]
 topBy f = take 1 . sortBy (comparing f)
 
+heuristic :: NT a -> [[T a]] -> Sum Int
+heuristic = undefined
+
+heuristicL :: [[[a]]] -> Sum Int
+heuristicL = mempty
+
+-- Sum . length . concat . concat
+
+-- >>> heuristicL [[[1,2],[4]],[[3]]]
+-- Sum {getSum = 4}
+
 explainEvidence' ::
   (Grammar a, _) =>
   (NT a -> [[T a]] -> m (Template (ProdRule a))) ->
@@ -72,18 +83,19 @@ explainEvidence' ::
   [[T a]] ->
   m (Template (ProdRule a))
 explainEvidence' f x ls =
-  cost' 1
-    >> ( case ls of
-           [[], [], []] -> baseParse x ls
-           _ ->
-             baseParse x ls
-               <|> ( case ls of
-                       [l] -> zeroHoleParse f x l
-                       [l1, l2] -> oneHoleParse f x l1 l2
-                       [l1, l2, l3] -> twoHoleParse f x l1 l2 l3
-                       _ -> empty
-                   )
-       )
+  asum
+    [ do
+        cost 1 0
+        baseParse x ls,
+      do
+        cost 0 (foldMap (Sum . length) ls)
+        case ls of
+          [[], [], []] -> empty
+          [l] -> zeroHoleParse f x l
+          [l1, l2] -> oneHoleParse f x l1 l2
+          [l1, l2, l3] -> twoHoleParse f x l1 l2 l3
+          _ -> empty
+    ]
 
 explainEvidence'' ::
   (Grammar a, _) =>
@@ -134,10 +146,12 @@ zeroHoleParse f x l =
             asum
               [ do
                   guard $ hasEvidence z β [l4]
+                  cost 0 $ heuristicL [[l1, l3, l5], [l2]]
                   return $ WithRep α [New, RepLoc 1] [β],
                 do
                   γ <- f z [l4]
                   guard $ γ /= β
+                  cost 0 $ heuristicL [[l1, l3, l5], [l2], [l4]]
                   return $ WithRep α [New, New] [β, γ]
               ]
         )
@@ -153,6 +167,7 @@ zeroHoleParse f x l =
             α <- f x [l1, l3]
             let Just [y] = argTypes x α
             β <- f y [l2]
+            cost 0 $ heuristicL [[l1, l3], [l2]]
             return (WithRep α [New] [β])
         )
         ( do
@@ -179,6 +194,7 @@ oneHoleParse f x l_L l_R =
             α <- f x [l1, l3, l4]
             let Just [y, _] = argTypes x α
             β <- f y [l2]
+            cost 0 $ heuristicL [[l1, l3, l4], [l2]]
             return $ WithRep α [New, New] [β, Id]
         )
         ( do
@@ -192,6 +208,7 @@ oneHoleParse f x l_L l_R =
             α <- f x [l1, l2, l4]
             let Just [_, z] = argTypes x α
             β <- f z [l3]
+            cost 0 $ heuristicL [[l1, l2, l4], [l3]]
             return $ WithRep α [New, New] [Id, β]
         )
         ( do
@@ -207,10 +224,12 @@ oneHoleParse f x l_L l_R =
             asum
               [ do
                   guard $ hasEvidence y α [l2, l3]
+                  cost 0 $ heuristicL [[l1, l4]]
                   return $ WithRep α [Star] [],
                 do
                   β <- f y [l2, l3]
                   guard $ β /= α
+                  cost 0 $ heuristicL [[l1, l4], [l2, l3]]
                   return $ WithRep α [New] [β]
               ]
         )
@@ -241,10 +260,12 @@ twoHoleParse f x l_L l_M l_R =
             asum
               [ do
                   guard (hasEvidence y α [l2, l3, l4])
+                  cost 0 $ heuristicL [[l1, l5, l7], [l6]]
                   return $ WithRep α [Star, New] [β],
                 do
                   β1 <- f y [l2, l3, l4]
                   guard (β /= β1)
+                  cost 0 $ heuristicL [[l1, l5, l7], [l6], [l2, l3, l4]]
                   return $ WithRep α [New, New] [β1, β]
               ]
         )
@@ -264,10 +285,12 @@ twoHoleParse f x l_L l_M l_R =
             asum
               [ do
                   guard $ hasEvidence z α [l4, l5, l6]
+                  cost 0 $ heuristicL [[l1, l3, l7], [l2]]
                   return $ WithRep α [New, Star] [β],
                 do
                   β1 <- f z [l4, l5, l6]
                   guard $ β1 /= α
+                  cost 0 $ heuristicL [[l1, l3, l7], [l2], [l4, l5, l6]]
                   return $ WithRep α [New, New] [β, β1]
               ]
         )
@@ -282,6 +305,7 @@ twoHoleParse f x l_L l_M l_R =
             α <- f x [l1, l4, l5]
             let Just [y, _] = argTypes x α
             β <- f y [l2, l3]
+            cost 0 $ heuristicL [[l1, l4, l5], [l2, l3]]
             return $ WithRep α [New, New] [β, Id]
         )
         ( do
@@ -294,6 +318,7 @@ twoHoleParse f x l_L l_M l_R =
             α <- f x [l1, l2, l5]
             let Just [_, z] = argTypes x α
             β <- f z [l3, l4]
+            cost 0 $ heuristicL [[l1, l2, l5], [l3, l4]]
             return $ WithRep α [New, New] [Id, β]
         )
         ( do
@@ -306,6 +331,7 @@ twoHoleParse f x l_L l_M l_R =
             α <- f x [l1, l5]
             let Just [y] = argTypes x α
             β <- f y [l2, l3, l4]
+            cost 0 $ heuristicL [[l1, l5], [l2, l3, l4]]
             return $ WithRep α [New] [β]
         )
         ( do
@@ -320,10 +346,12 @@ twoHoleParse f x l_L l_M l_R =
             asum
               [ do
                   guard $ hasEvidence z β [l5, l6]
+                  cost 0 $ heuristicL [[l1, l4, l7], [l2, l3]]
                   return $ WithRep α [New, RepLoc 1] [β],
                 do
                   γ <- f z [l5, l6]
                   guard $ γ /= β
+                  cost 0 $ heuristicL [[l1, l4, l7], [l2, l3], [l5, l6]]
                   return $ WithRep α [New, New] [β, γ]
               ]
         )

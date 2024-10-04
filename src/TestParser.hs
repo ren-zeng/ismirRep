@@ -50,8 +50,9 @@ explainEvidenceM e x = do
 -- Just (Sum {getSum = 5},WithRep (Template Prol) [New,RepLoc 1] [Template Chord])
 
 main = do
-  let testEvidence = (fmap . fmap) (`TChord` I) [[II, V, I, II, V, I, II, V, I]]
-  -- let testEvidence = [[TChord I I, TChord II (II `Of` (I `Of` I)), TChord V (II `Of` (I `Of` I)), TChord II (I `Of` I), TChord V (I `Of` I), TChord I I]]
+  -- let testEvidence = (fmap . fmap) (`TChord` I) [[II, V, I, II, V, I]]
+  -- let testEvidence = (fmap . fmap) (`TChord` I) [[II, II, V, I, II, V, I]]
+  let testEvidence = [[TChord I I, TChord II (II `Of` (I `Of` I)), TChord V (II `Of` (I `Of` I)), TChord II (I `Of` I), TChord V (I `Of` I), TChord I I]]
   print testEvidence
   let templates = explainEvidence testEvidence (NTChord I I)
   -- print (length templates)
@@ -85,4 +86,3 @@ main = do
     writeSVG "testTemplateAStar.svg" $ vsep 1 $ d <$> [bestTemplate]
 
 -- >>> main
--- ProgressCancelledException
