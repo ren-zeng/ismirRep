@@ -45,6 +45,9 @@ dependencies:
 - monad-dijkstra
 - unicode-show
 - unicode-tricks
+- partial-order
+- stack
+- pretty-simple
 ghc-options:
 - -Wall
 - -Wcompat

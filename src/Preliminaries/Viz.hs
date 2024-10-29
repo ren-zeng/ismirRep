@@ -106,6 +106,6 @@ parseTreeOfTreeDiagram :: (Grammar a) => Template (ProdRule a) -> Diagram B
 parseTreeOfTreeDiagram t =
   parseTreeDiagram
     toTreeDiagram'
-    (fontSizeL 0.3 . text . prettyMeta)
+    (text . prettyMeta)
     (asParseTreeOfTree t)
     # frame 1

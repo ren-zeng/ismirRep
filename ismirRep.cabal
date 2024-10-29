@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules:
       CYKParser
+      ForwardChaining
       GrammarInstances
       Hello.HelloAStar
       Hello.HelloLazyPPL
@@ -41,6 +42,7 @@ library
       Preprocessing.TreeBankParser
       SemiringParsing
       SLG
+      TemplateForwardChaining
       TemplateGrammar
       TestParser
       TreeUtils
@@ -68,9 +70,12 @@ library
     , monad-bayes
     , monad-dijkstra
     , musicology-pitch
+    , partial-order
+    , pretty-simple
     , recursion-schemes
     , semirings
     , split
+    , stack
     , statistics
     , text
     , transformers
@@ -106,9 +111,12 @@ executable ismirRep-exe
     , monad-bayes
     , monad-dijkstra
     , musicology-pitch
+    , partial-order
+    , pretty-simple
     , recursion-schemes
     , semirings
     , split
+    , stack
     , statistics
     , text
     , transformers
@@ -145,9 +153,12 @@ test-suite ismirRep-test
     , monad-bayes
     , monad-dijkstra
     , musicology-pitch
+    , partial-order
+    , pretty-simple
     , recursion-schemes
     , semirings
     , split
+    , stack
     , statistics
     , text
     , transformers

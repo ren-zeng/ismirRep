@@ -1,12 +1,24 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Meta where
 
+import Data.List
+import Data.MemoTrie
+import GHC.Generics (Generic)
 import Text.Printf
 
-data RepSymbol = New | RepLoc Int | Star deriving (Show, Eq, Ord)
+data RepSymbol = New | RepLoc Int | Star deriving (Show, Eq, Ord, Generic)
+
+instance HasTrie RepSymbol where
+  newtype RepSymbol :->: b = RepSymbolTrie {unRepSymbolTrie :: Reg RepSymbol :->: b}
+  trie = trieGeneric RepSymbolTrie
+  untrie = untrieGeneric unRepSymbolTrie
+  enumerate = enumerateGeneric unRepSymbolTrie
 
 type Meta = [RepSymbol]
 
@@ -35,3 +47,18 @@ prettyMeta m = printf "⟨ %s ⟩" . unwords $ (go <$> m)
     go New = "_"
     go Star = "★"
     go (RepLoc i) = printf "%d" i
+
+inferMetaAcc :: (Eq b) => b -> [b] -> [b] -> Meta
+inferMetaAcc r seen [] = []
+inferMetaAcc r seen (x : xs) = y : inferMetaAcc r (seen ++ [x]) xs
+  where
+    y = if x == r then Star else maybe New (RepLoc . (1 +)) (elemIndex x seen)
+
+inferMeta' :: (Eq a) => a -> [a] -> Meta
+inferMeta' r = inferMetaAcc r []
+
+inferMeta :: (Eq a) => a -> [a] -> (Meta, [a])
+inferMeta x xs = (m, simplifyByMeta m xs) where m = inferMeta' x xs
+
+-- >>> inferMeta 99 [1,1,3,3,99]
+-- ([New,RepLoc 1,New,RepLoc 3,Star],[1,3])

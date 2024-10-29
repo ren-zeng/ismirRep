@@ -11,7 +11,7 @@ module GrammarInstances where
 import Data.MemoTrie
 import Data.Tree
 import GHC.Generics
-import Preliminaries.Grammar 
+import Preliminaries.Grammar
 
 data Expr
   = Var String
@@ -139,6 +139,12 @@ instance HasTrie (NT Chord) where
   untrie = untrieGeneric unNTChordTrie
   enumerate = enumerateGeneric unNTChordTrie
 
+instance HasTrie (ProdRule Chord) where
+  newtype (ProdRule Chord) :->: b = ProdRuleChordTrie {unProdRuleChordTrie :: Reg (ProdRule Chord) :->: b}
+  trie = trieGeneric ProdRuleChordTrie
+  untrie = untrieGeneric unProdRuleChordTrie
+  enumerate = enumerateGeneric unProdRuleChordTrie
+
 instance Grammar Chord where
   data T Chord
     = TChord Numeral Numeral
@@ -154,7 +160,7 @@ instance Grammar Chord where
     | D5
     | AppD
     | IV_V
-    deriving (Show, Enum, Ord, Bounded, Eq)
+    deriving (Show, Enum, Ord, Bounded, Eq, Generic)
 
   nArg = \case
     Chord -> 0

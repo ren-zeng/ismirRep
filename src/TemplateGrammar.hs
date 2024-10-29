@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -15,6 +16,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
 module TemplateGrammar where
@@ -25,21 +27,30 @@ import Data.Either
 import Data.Functor.Foldable
 import Data.Functor.Foldable.TH (makeBaseFunctor)
 import Data.Maybe (catMaybes, isJust, isNothing)
+import Data.MemoTrie
+import qualified Data.PartialOrd as POrd
 import Data.Semiring hiding ((-))
 import Data.Tree
+import GHC.Generics (Generic)
 import GrammarInstances
 import Meta
 import Preliminaries.Grammar
-import TreeUtils
+import TreeUtils (applyAt, leafLocations, navigateTo)
 import Prelude hiding (sum, (+))
 
 data Template a
   = Id
   | Template a
   | WithRep (Template a) Meta [Template a]
-  deriving (Eq, Show, Functor)
+  deriving (Eq, Show, Functor, Generic, Ord)
 
 makeBaseFunctor ''Template
+
+instance (HasTrie a) => HasTrie (Template a) where
+  newtype (Template a) :->: b = TemplateTrie {unTemplateTrie :: Reg (Template a) :->: b}
+  trie = trieGeneric TemplateTrie
+  untrie = untrieGeneric unTemplateTrie
+  enumerate = enumerateGeneric unTemplateTrie
 
 instance Applicative Template where
   pure = Template
@@ -59,6 +70,9 @@ instance (Arity a) => Arity (Template a) where
   arity (Id) = 1
   arity (WithRep a m as) = sum $ arity <$> useMeta m a as
 
+data HoleTree a = Hole | HoleTree a [HoleTree a]
+  deriving (Eq, Ord, Show)
+
 class ArgTypes x a b where
   argTypes :: x -> a -> Maybe [b]
 
@@ -67,6 +81,9 @@ instance (Grammar a) => ArgTypes (NT a) (ProdRule a) (Symbol a) where
 
 instance forall a. (Grammar a) => ArgTypes (NT a) (Template (ProdRule a)) (NT a) where
   argTypes x t = rights <$> applyTemplate x t
+
+instance (Grammar a) => ArgTypes (NT a) (HoleTree (ProdRule a)) (NT a) where
+  argTypes x t = rights <$> applyHoleTree x t
 
 -- >>> useMeta [Star,New] (Template RD5) [Template RProl]
 -- [Template RD5,Template RProl]
@@ -118,25 +135,25 @@ expandWithM sat (f : fs) (x : xs) =
     then (++) <$> f x <*> expandWithM sat fs xs
     else (x :) <$> expandWithM sat (f : fs) xs
 
+applyHoleTree :: (Grammar a) => NT a -> HoleTree (ProdRule a) -> Maybe [Symbol a]
+applyHoleTree x = \case
+  Hole -> Just [Right x]
+  HoleTree r ts -> do
+    ys <- safeApplyRule r x
+    expandWithM
+      isRight
+      ((\t (Right nt) -> applyHoleTree nt t) <$> ts)
+      ys
+
 applyTemplate :: (Grammar a) => NT a -> Template (ProdRule a) -> Maybe [Symbol a]
 applyTemplate x = \case
   Template r -> safeApplyRule r x
   Id -> Just $ [Right x]
-  WithRep α m βs -> case (applyTemplate x α) of
-    Nothing -> Nothing
-    Just ss -> expandWithM isRight ((\t (Right nt) -> applyTemplate nt t) <$> useMeta m α βs) ss
-
--- (applyTemplate x α)
--- do
--- ss <- applyTemplate x α
--- let nts = rights ss
--- let r = zipWith ($) (flip applyTemplate <$> useMeta m α βs) nts
--- if all isJust r
---   then return $ concat $ catMaybes r
---   else Nothing
-
--- sss <- sequence r
--- return $ concat sss
+  WithRep α m βs ->
+    expandWithM
+      isRight
+      ((\t (Right nt) -> applyTemplate nt t) <$> useMeta m α βs)
+      =<< applyTemplate x α
 
 -- >>> applyTemplate (NTChord I I)  (WithRep (Template D5) [Star,New] [Template D5])
 -- Just [Right (NTChord II I),Right (NTChord V I),Right (NTChord V I),Right (NTChord I I)]
@@ -165,7 +182,7 @@ derivedTree x = \case
       (do β <- useMeta m α βs; return (\(Node (Right nt) []) -> derivedTree nt β))
       (derivedTree x α)
 
-derivedRuleTree :: forall a. (Grammar a) => Template (ProdRule a) -> Tree (Maybe (ProdRule a))
+derivedRuleTree :: forall a. (Grammar a, _) => Template (ProdRule a) -> Tree (Maybe (ProdRule a))
 derivedRuleTree = \case
   Template r -> Node (Just r) $ replicate (nArg r) (Node Nothing [])
   Id -> Node Nothing []
@@ -183,3 +200,14 @@ templateSize = cata $ \case
   TemplateF _ -> 1
   IdF -> 1
   WithRepF x _ ys -> 1 + x + sum ys
+
+equivalent :: (Grammar a, _) => Template (ProdRule a) -> Template (ProdRule a) -> Bool
+equivalent = memo $ \x y -> derivedRuleTree x == derivedRuleTree y
+
+instance POrd.PartialOrd (Template (ProdRule Chord)) where
+  x <= y = nRule x <= nRule y && equivalent x y
+
+-- compare x y =
+--   if derivedRuleTree x == derivedRuleTree y
+--     then Just $ compare (nRule x) (nRule y)
+--     else Nothing
