@@ -57,6 +57,7 @@ library
       MemoTrie
     , aeson
     , base >=4.7 && <5
+    , combinatorial
     , containers
     , data-fix
     , diagrams-contrib
@@ -97,6 +98,7 @@ executable ismirRep-exe
       MemoTrie
     , aeson
     , base >=4.7 && <5
+    , combinatorial
     , containers
     , data-fix
     , diagrams-contrib
@@ -139,6 +141,7 @@ test-suite ismirRep-test
       MemoTrie
     , aeson
     , base >=4.7 && <5
+    , combinatorial
     , containers
     , data-fix
     , diagrams-contrib

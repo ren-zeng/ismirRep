@@ -12,20 +12,25 @@
 
 module ForwardChaining where
 
+-- import Data.Set (Set, difference, fromList, insert, singleton, toList)
+
+import qualified Combinatorics as Comb
 import Control.Applicative
 import Control.Monad (forM)
 import Control.Monad.Extra
 import Control.Monad.Trans.State
 import Data.Graph (Graph)
-import Data.List (permutations)
+import Data.List.Split (splitPlaces)
 import Data.Map (Map, keys)
 import qualified Data.Map as Map
 import Data.Maybe
-import Data.Set (Set, difference, fromList, insert, singleton, toList)
+import Data.Sequence (insertAt)
 import Data.Tree
 import Debug.Trace
+import GHC.List (List)
 import GrammarInstances
 import Preliminaries.Grammar
+import Text.Pretty.Simple
 import Text.Printf
 import Prelude hiding (lookUp)
 
@@ -38,18 +43,28 @@ import Prelude hiding (lookUp)
 data Rule a v w = Rule
   { -- split :: v -> Maybe (Set v),
     name :: a,
-    merge :: Set v -> Maybe v,
+    merge :: List v -> Maybe v,
     combine :: [w] -> w,
     nPremises :: Int
   }
 
-data HyperEdge a v w = HyperEdge a v ([w] -> w) (Set v)
+data HyperEdge a v w = HyperEdge
+  { edgeLabel :: a,
+    edgeTarget :: v,
+    combFunc :: [w] -> w,
+    edgeSources :: List v
+  }
 
 instance (Show v, Show a) => Show (HyperEdge a v w) where
-  show (HyperEdge x v _ us) = printf "%s <- %s -< %s" (show v) (show x) (show us)
+  show e =
+    printf
+      "%s ← %s ⤙ %s"
+      (show $ edgeTarget e)
+      (show $ edgeLabel e)
+      (show $ edgeSources e)
 
 class RuleLike r where
-  consequent :: r a v w -> Set v -> Maybe v
+  consequent :: r a v w -> List v -> Maybe v
   ruleName :: r a v w -> a
 
   -- premises :: e v w -> v -> Maybe (Set v)
@@ -76,6 +91,9 @@ data HyperGraph a v w = HyperGraph
   }
   deriving (Show)
 
+inHyperGraph :: (Ord v) => v -> HyperGraph a v w -> Bool
+inHyperGraph v g = v `Map.member` vertexWeights g
+
 describeHyperGraph :: HyperGraph a v w -> String
 describeHyperGraph x =
   printf
@@ -83,45 +101,35 @@ describeHyperGraph x =
     (show . length $ hyperEdges x)
     (show . length $ vertexWeights x)
 
+allInserts :: a -> [a] -> [[a]]
+allInserts a [] = [[a]]
+allInserts a (x : xs) = (a : x : xs) : ((x :) <$> allInserts a xs)
+
+-- >>> allInserts 2 [9,8,4]
+-- [[2,9,8,4],[9,2,8,4],[9,8,2,4],[9,8,4,2]]
+
 instance Chart HyperGraph where
   out rules chart v = do
     r <- rules
-    -- if arity r == 1
-    --   then do
-    --     guard (isJust $ consequent r (fromList [v]))
-    --     let Just conclusion = consequent r (fromList [v])
-    --     traceM $
-    --       printf
-    --         "🟢  %s ← %s - %s"
-    --         (show conclusion)
-    --         (show (ruleName r))
-    --         (show [v])
-    --     return $ HyperEdge (ruleName r) conclusion (combination r) (fromList [v])
-    --   else do
-    known <- chooseN (arity r - 1) (fromList $ keys (vertexWeights chart))
-    -- traceM $ "known:" ++ show known
-    let mConclusion = consequent r (insert v known)
+
+    known <- chooseN (arity r - 1) (keys (vertexWeights chart))
+    premises <- allInserts v known
+    let mConclusion = consequent r premises
     guard (isJust $ mConclusion)
     let Just conclusion = mConclusion
-    traceM $
-      printf
-        "🟢  %s ← %s - %s ++ %s"
-        (show conclusion)
-        (show (ruleName r))
-        (show [v])
-        (show known)
-    return $ HyperEdge (ruleName r) conclusion (combination r) (insert v known)
+    -- traceM $
+    --   printf
+    --     "🟢  %s ← %s - %s ++ %s"
+    --     (show conclusion)
+    --     (show (ruleName r))
+    --     (show [v])
+    --     (show known)
+    return $ HyperEdge (ruleName r) conclusion (combination r) premises
 
 instance ChartIn HyperGraph where
   inEdges chart v = filter (\(HyperEdge _ v' _ _) -> v' == v) (hyperEdges chart)
 
-chooseN :: (Ord a) => Int -> Set a -> [Set a]
-chooseN 0 _ = [mempty]
-chooseN 1 xs = singleton <$> toList xs
-chooseN n xs = toList . fromList $ do
-  xs' <- chooseN (n - 1) xs
-  x <- chooseN 1 $ difference xs xs'
-  return $ x <> xs'
+chooseN = Comb.variate
 
 -- >>> length$  chooseN 3 (fromList "abcdefg")
 -- 35
@@ -136,7 +144,7 @@ instance HyperGraphLike HyperGraph where
     trace ("✨adding " ++ show e) $
       x {hyperEdges = e : hyperEdges x, vertexWeights = Map.insert v wNew $ vertexWeights x}
     where
-      w = f . mapMaybe (lookUpV x) . toList $ us
+      w = f . mapMaybe (lookUpV x) $ us
       wNew = case lookUpV x v of
         Nothing -> w
         Just w' -> plus v w' w
@@ -183,9 +191,14 @@ recoverParseForest ::
   v ->
   [Tree v]
 recoverParseForest chart v = do
-  HyperEdge _ _ _ us <- inEdges chart v
-  u <- toList us
-  return $ Node v (recoverParseForest chart u)
+  if null $ inEdges chart v
+    then return $ Node v []
+    else do
+      e <- inEdges chart v
+      let us = edgeSources e
+      -- traceM $ (show us) ++ "::: " ++ (show $ recoverParseForest chart <$> us)
+      ts <- mapM (recoverParseForest chart) us
+      return $ Node v ts
 
 addNewItem plus e@(HyperEdge _ v f us) (c, a) =
   let c' = addE plus e c
@@ -226,7 +239,7 @@ cykAxiom :: Rule () (Item CYK Chord) Double
 cykAxiom =
   Rule
     ()
-    ( \s -> case toList s of
+    ( \s -> case s of
         [IsWord (TChord x y) i j] ->
           if j == i + 1
             then Just $ IsPhrase (NTChord x y) i j
@@ -245,23 +258,16 @@ cykInference :: Rule () (Item CYK Chord) Double
 cykInference =
   Rule
     ()
-    ( \s ->
-        asum $
-          ( \l ->
-              case l of
-                [IsPhrase y i j, IsPhrase z j' k] -> do
-                  traceGuard ("🔹 " ++ show l) ("🔺 " ++ show l) guard $ j == j' && i < j && j' < k
-                  x <- listToMaybe . fmap fst $ possibleMerges [Right y, Right z]
-                  traceM ("🔸 " ++ show l)
-                  return (IsPhrase x i k)
-                _ -> do
-                  traceM ("🟥 " ++ show l)
-                  Nothing
-          )
-            <$> permutations (toList s)
-            -- _ -> do
-            --   -- traceM ("🔺" ++ show s)
-            --   Nothing
+    ( \l ->
+        case l of
+          [IsPhrase y i j, IsPhrase z j' k] -> do
+            traceGuard ("🔹 " ++ show l) ("🔺 " ++ show l) guard $ j == j' && i < j && j' < k
+            x <- listToMaybe . fmap fst $ possibleMerges [Right y, Right z]
+            traceM ("🔸 " ++ show l)
+            return (IsPhrase x i k)
+          _ -> do
+            traceM ("🟥 " ++ show l)
+            Nothing
     )
     (sum @_ @Double)
     2
@@ -269,24 +275,22 @@ cykInference =
 -- >>> possibleMerges [Right $ NTChord V I,Right $ NTChord I I]
 -- [(NTChord I I,D5)]
 
-r = length $ recoverParseForest builtCykChart goal
+r = length $ recoverParseForest (builtCykChart testChords) goal
   where
-    goal = IsPhrase (NTChord I I) 0 5
+    goal = IsPhrase (NTChord I I) 0 (length testChords)
 
-builtCykChart :: HyperGraph () (Item CYK Chord) Double
-builtCykChart =
+testChords =
+  ( (`TChord` I)
+      <$> (concat . replicate 40) [VI, II, V, I]
+  )
+
+builtCykChart :: [T Chord] -> HyperGraph () (Item CYK Chord) Double
+builtCykChart xs =
   fst $
     forwardChain
       [cykAxiom, cykInference]
-      cykChart
+      (initializeChartCYK xs)
       (const (min))
-
-cykChart :: HyperGraph () (Item CYK Chord) Double
-cykChart =
-  initializeChartCYK
-    ( (`TChord` I)
-        <$> (concat . replicate 1) [I, IV, II, V, I]
-    )
 
 initializeChartCYK :: (_) => [T Chord] -> HyperGraph () (Item CYK Chord) w
 initializeChartCYK = initializeChart (fromTerminals $ \x n -> IsWord x n (n + 1))

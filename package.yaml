@@ -48,6 +48,7 @@ dependencies:
 - partial-order
 - stack
 - pretty-simple
+- combinatorial
 ghc-options:
 - -Wall
 - -Wcompat

@@ -1,4 +1,8 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module TemplateForwardChaining where
@@ -6,8 +10,8 @@ module TemplateForwardChaining where
 import Control.Applicative
 import Control.Monad
 import Data.Foldable
-import Data.List (permutations)
 import Data.Map (keys)
+import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Debug.Trace
 import ForwardChaining
@@ -15,9 +19,12 @@ import GrammarInstances
 import Meta
 import Preliminaries.Grammar (Grammar (nArg), rules)
 import TemplateGrammar
+import Text.Pretty.Simple
 
+-- | A tag for a data family instance
 data TG
 
+-- | A representation of interval on Int
 data Span = ZeroSpan | Span Int Int deriving (Show, Eq, Ord)
 
 spanSum :: [Span] -> Maybe Span
@@ -26,28 +33,32 @@ spanSum = foldM (|+|) ZeroSpan
 (|+|) :: Span -> Span -> Maybe Span
 ZeroSpan |+| y = Just y
 x |+| ZeroSpan = Just x
-x@(Span x1 _) |+| y@(Span _ y2) =
-  if x >|< y
-    then Just $ Span x1 y2
-    else Nothing
+(Span x1 x2) |+| (Span y1 y2) = do
+  guard $ x2 == y1
+  return $ Span x1 y2
 
-(>|<) :: Span -> Span -> Bool
-(Span _ y1) >|< (Span x2 _) = y1 == x2
+-- | The set of proposition when parsing template grammar
+data instance Item TG a
+  = IsW (T a) [Span]
+  | IsP (NT a) [Span] (HoleTree (ProdRule a))
 
-data instance Item TG Chord
-  = IsW (T Chord) [Span]
-  | IsP (NT Chord) [Span] (HoleTree (ProdRule Chord))
-  deriving (Eq, Ord, Show)
+-- deriving (Eq, Ord, Show)
 
-spansOf :: Item TG Chord -> [Span]
+deriving instance (Grammar a) => Eq (Item TG a)
+
+deriving instance (Grammar a, Ord (T a), Ord (NT a), Ord (ProdRule a)) => Ord (Item TG a)
+
+deriving instance (Grammar a) => Show (Item TG a)
+
+spansOf :: Item TG a -> [Span]
 spansOf (IsW _ x) = x
 spansOf (IsP _ x _) = x
 
-headOf :: Item TG Chord -> Maybe (NT Chord)
+headOf :: Item TG a -> Maybe (NT a)
 headOf (IsP x ss t) = Just x
 headOf _ = Nothing
 
-holeTreeOf :: Item TG Chord -> HoleTree (ProdRule Chord)
+holeTreeOf :: Item TG a -> HoleTree (ProdRule a)
 holeTreeOf (IsP _ _ t) = t
 
 axiomTemplate :: Rule (Maybe Meta) (Item TG Chord) Int
@@ -71,64 +82,29 @@ case analysis on the number of (premises)
 3 = (2 [1,1]) | (2 [0,1]) | (2 [1,0]) | (2 [0,0])
 
 -}
--- inferenceTemplate2 :: Rule Meta (Item TG Chord) Int
--- inferenceTemplate2 = Rule (\s -> asum (g <$> permutations (toList s))) sum 2
---   where
---     g = \case
---       [IsP x [sL, sR] tX, IsP y ss tY] -> case ss of
---         [s1] -> do
---           r <- spanSum [sL, s1, sR]
---           guard $ argTypes x tX == Just [y]
---           guard $ s1 /= ZeroSpan
---           return $ IsP x [r] (WithRep tX [New] [tY])
---         [s1, s2] -> do
---           rL <- sL |+| s1
---           rR <- s2 |+| sR
---           guard $ argTypes x tX == Just [y]
---           asum
---             [ do
---                 guard (tX == tY)
---                 return $ IsP x [rL, rR] (WithRep tX [Star] []),
---               return $ IsP x [rL, rR] (WithRep tX [New] [tY])
---             ]
---         [s1, s2, s3] -> undefined
---         _ -> Nothing
---       _ -> Nothing
-
-interleave :: [a] -> [a] -> [a]
-interleave = undefined
 
 safeUnpack :: Int -> [a] -> Maybe [a]
 safeUnpack n xs = do
   guard $ length xs == n
   return xs
 
-inferenceTemplate :: [Int] -> Meta -> Rule (Maybe Meta) (Item TG Chord) Int
+inferenceTemplate :: (Grammar a) => [Int] -> Meta -> Rule (Maybe Meta) (Item TG a) Int
 inferenceTemplate ns mt = Rule (Just mt) f sum k
   where
     k = length ns + 1
-    f s = asum $ g <$> permutations (toList s)
-    g l = do
-      guard (length l == 3)
+    f l = do
       (IsP x topSpans tX) : bs <- safeUnpack k l
       let allBotSpans = spansOf <$> bs
       guard $ sum (length <$> allBotSpans) <= 2
-      guard (all notEmptyZeroHole allBotSpans)
-
-      -- traceM $ "topSpans" ++ show topSpans
-      -- traceM $ "allBotSpans" ++ show allBotSpans
-      -- traceM "\n"
-      guard (length topSpans == length bs + 1)
+      guard $ all notEmptyZeroHole allBotSpans
+      guard $ length topSpans == length bs + 1
       combinedSpans <- substituteHoles topSpans allBotSpans
-      -- traceM ("combinedSpans: " ++ show combinedSpans)
       guard (combinedSpans /= topSpans)
       ys <- mapM headOf bs
       guard (argTypes x tX == Just ys)
       let (m, freeBs) = inferMeta tX (holeTreeOf <$> bs)
       guard $ mt == m
-
       holeTree <- assembleHoleTree tX $ holeTreeOf <$> bs
-
       return $ IsP x combinedSpans holeTree
 
 noHole :: HoleTree a -> Bool
@@ -136,9 +112,9 @@ noHole Hole = False
 noHole (HoleTree _ ts) = all noHole ts
 
 assembleHoleTree ::
-  HoleTree (ProdRule Chord) ->
-  [HoleTree (ProdRule Chord)] ->
-  Maybe (HoleTree (ProdRule Chord))
+  HoleTree (ProdRule a) ->
+  [HoleTree (ProdRule a)] ->
+  Maybe (HoleTree (ProdRule a))
 assembleHoleTree t [] = Just t
 assembleHoleTree Hole [b] = Just b
 assembleHoleTree (HoleTree x (t : ts)) (b : bs) =
@@ -205,35 +181,14 @@ substituteHoles _ _ = Nothing
 -- >>> substituteHoles [ZeroSpan,ZeroSpan,ZeroSpan] [[Span 0 1],[Span 1 5]]
 -- Just [Span 0 5]
 
--- >>> substituteHoles [ZeroSpan,ZeroSpan,ZeroSpan] [[ZeroSpan,ZeroSpan],[ZeroSpan,ZeroSpan]]
--- Just [ZeroSpan,ZeroSpan,ZeroSpan]
-
--- inferenceTemplate3 :: Rule Meta (Item TG Chord) Int
--- inferenceTemplate3 = Rule f sum 3
---   where
---     f s = case toList s of
---       [v1, v2, v3] ->
---         asum $
---           ( \l -> case l of
---               [(IsP x [sL, sM, sR] tX), (IsP y [s1] tY), (IsP z [s2] tZ)] -> do
---                 -- traceM ("???" ++ show s)
---                 sp <- foldM (|+|) ZeroSpan [sL, s1, sM, s2, sR]
---                 guard $ s1 /= ZeroSpan && s2 /= ZeroSpan
---                 guard $ argTypes x tX == Just [y, z]
---                 -- traceM ("🔸" ++ show s)
---                 return $ IsP x [sp] (WithRep tX [New, New] [tY, tZ])
---               _ -> Nothing
---           )
---             <$> permutations [v1, v2, v3]
---       _ -> Nothing
-
--- >>> foldM (|+|) ZeroSpan  [Span 1 3, Span 3 6, Span 0 1]
--- Nothing
-
 initializeChartTemplate :: [T Chord] -> HyperGraph (Maybe Meta) (Item TG Chord) Int
-initializeChartTemplate =
-  initializeChart
-    ((++ [IsP nt (replicate (nArg r + 1) ZeroSpan) (HoleTree r (replicate (nArg r) Hole)) | r <- rules, nt <- [NTChord I I, NTChord II I, NTChord IV I, NTChord V I]]) . fromTerminals (\x n -> IsW x [Span n (n + 1)]))
+initializeChartTemplate = initializeChart (\xs -> prodRuleAxioms ++ termialAxioms xs)
+  where
+    termialAxioms = fromTerminals (\x n -> IsW x [Span n (n + 1)])
+    prodRuleAxioms = do
+      r <- rules
+      nt <- [NTChord I I, NTChord II I, NTChord IV I, NTChord V I]
+      return $ IsP nt (replicate (nArg r + 1) ZeroSpan) (HoleTree r (replicate (nArg r) Hole))
 
 allHoleCases :: [([Int], Meta)]
 allHoleCases =
@@ -252,22 +207,31 @@ allHoleCases =
     ([2, 0], [New, New])
   ]
 
-a :: HyperGraph (Maybe Meta) (Item TG Chord) Int
-a =
+inferChordTemplate :: [T Chord] -> HyperGraph (Maybe Meta) (Item TG Chord) Int
+inferChordTemplate xs =
   fst $
     forwardChain
       (axiomTemplate : [inferenceTemplate ns mt | (ns, mt) <- allHoleCases])
-      (initializeChartTemplate $ (`TChord` I) <$> [I, VI, II, V, VI, II, V, I, I, VI, II, V, VI, II, V, I])
+      (initializeChartTemplate xs)
       (const min)
 
--- tryMerging =
---   merge
---     (inferenceTemplate [0, 0] [New, RepLoc 1])
---     ( Set.fromList
---         [IsP nt (replicate (nArg r + 1) ZeroSpan) (HoleTree r []) | r <- rules, nt <- [NTChord I I]]
---     )
+sumMap f = foldr (\a -> (+ f a)) 0
 
--- >>> tryMerging
--- Just (IsP (NTChord I I) [Span 0 5] (WithRep (Template Prol) [New,RepLoc 1] [Template Chord]))
+-- findMinimal ::
+--   Item TG Chord ->
+--   HyperGraph (Maybe Meta) (Item TG Chord) Int ->
+--   [Template (ProdRule Chord)]
+-- findMinimal goal hyper = do
+--   let weight = (vertexWeights hyper Map.!)
+--   guard $ goal `inHyperGraph` hyper
+--   e <- inEdges hyper goal
+--   let vs = edgeSources e
+--   guard $ sumMap weight vs == weight goal
+--   case edgeLabel e of
+--     Nothing -> return $ Template Chord
+--     Just m -> do
+--       let tX = head vs
+--       return $ WithRep tX m tYs
 
--- >>>
+a :: HyperGraph (Maybe Meta) (Item TG Chord) Int
+a = inferChordTemplate $ (`TChord` I) <$> [V, I]
