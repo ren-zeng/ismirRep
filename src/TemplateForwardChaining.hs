@@ -90,22 +90,22 @@ safeUnpack n xs = do
 
 inferenceTemplate :: (Grammar a) => [Int] -> Meta -> Rule (Maybe Meta) (Item TG a) Int
 inferenceTemplate ns mt = Rule (Just mt) f sum k
-  where
-    k = length ns + 1
-    f l = do
-      (IsP x topSpans tX) : bs <- safeUnpack k l
-      let allBotSpans = spansOf <$> bs
-      guard $ sum (length <$> allBotSpans) <= 2
-      guard $ all notEmptyZeroHole allBotSpans
-      guard $ length topSpans == length bs + 1
-      combinedSpans <- substituteHoles topSpans allBotSpans
-      guard (combinedSpans /= topSpans)
-      ys <- mapM headOf bs
-      guard (argTypes x tX == Just ys)
-      let (m, freeBs) = inferMeta tX (holeTreeOf <$> bs)
-      guard $ mt == m
-      holeTree <- assembleHoleTree tX $ holeTreeOf <$> bs
-      return $ IsP x combinedSpans holeTree
+ where
+  k = length ns + 1
+  f l = do
+    (IsP x topSpans tX) : bs <- safeUnpack k l
+    let allBotSpans = spansOf <$> bs
+    guard $ sum (length <$> allBotSpans) <= 2
+    guard $ all notEmptyZeroHole allBotSpans
+    guard $ length topSpans == length bs + 1
+    combinedSpans <- substituteHoles topSpans allBotSpans
+    guard (combinedSpans /= topSpans)
+    ys <- mapM headOf bs
+    guard (argTypes x tX == Just ys)
+    let (m, freeBs) = inferMeta tX (holeTreeOf <$> bs)
+    guard $ mt == m
+    holeTree <- assembleHoleTree tX $ holeTreeOf <$> bs
+    return $ IsP x combinedSpans holeTree
 
 noHole :: HoleTree a -> Bool
 noHole Hole = False
@@ -183,28 +183,28 @@ substituteHoles _ _ = Nothing
 
 initializeChartTemplate :: [T Chord] -> HyperGraph (Maybe Meta) (Item TG Chord) Int
 initializeChartTemplate = initializeChart (\xs -> prodRuleAxioms ++ termialAxioms xs)
-  where
-    termialAxioms = fromTerminals (\x n -> IsW x [Span n (n + 1)])
-    prodRuleAxioms = do
-      r <- rules
-      nt <- [NTChord I I, NTChord II I, NTChord IV I, NTChord V I]
-      return $ IsP nt (replicate (nArg r + 1) ZeroSpan) (HoleTree r (replicate (nArg r) Hole))
+ where
+  termialAxioms = fromTerminals (\x n -> IsW x [Span n (n + 1)])
+  prodRuleAxioms = do
+    r <- rules
+    nt <- [NTChord I I, NTChord II I, NTChord IV I, NTChord V I]
+    return $ IsP nt (replicate (nArg r + 1) ZeroSpan) (HoleTree r (replicate (nArg r) Hole))
 
 allHoleCases :: [([Int], Meta)]
 allHoleCases =
-  [ ([1], [New]),
-    ([1], [Star]),
-    ([2], [New]),
-    ([0, 0], [New, New]),
-    ([0, 0], [New, RepLoc 1]),
-    ([0, 1], [New, New]),
-    ([1, 1], [New, New]),
-    ([1, 1], [New, RepLoc 1]),
-    ([1, 0], [New, New]),
-    ([2, 0], [New, New]),
-    ([2, 0], [Star, New]),
-    ([0, 2], [New, New]),
-    ([2, 0], [New, New])
+  [ ([1], [New])
+  , ([1], [Star])
+  , ([2], [New])
+  , ([0, 0], [New, New])
+  , ([0, 0], [New, RepLoc 1])
+  , ([0, 1], [New, New])
+  , ([1, 1], [New, New])
+  , ([1, 1], [New, RepLoc 1])
+  , ([1, 0], [New, New])
+  , ([2, 0], [New, New])
+  , ([2, 0], [Star, New])
+  , ([0, 2], [New, New])
+  , ([2, 0], [New, New])
   ]
 
 inferChordTemplate :: [T Chord] -> HyperGraph (Maybe Meta) (Item TG Chord) Int

@@ -42,17 +42,17 @@ import Prelude hiding (lookUp)
 
 data Rule a v w = Rule
   { -- split :: v -> Maybe (Set v),
-    name :: a,
-    merge :: List v -> Maybe v,
-    combine :: [w] -> w,
-    nPremises :: Int
+    name :: a
+  , merge :: List v -> Maybe v
+  , combine :: [w] -> w
+  , nPremises :: Int
   }
 
 data HyperEdge a v w = HyperEdge
-  { edgeLabel :: a,
-    edgeTarget :: v,
-    combFunc :: [w] -> w,
-    edgeSources :: List v
+  { edgeLabel :: a
+  , edgeTarget :: v
+  , combFunc :: [w] -> w
+  , edgeSources :: List v
   }
 
 instance (Show v, Show a) => Show (HyperEdge a v w) where
@@ -63,31 +63,49 @@ instance (Show v, Show a) => Show (HyperEdge a v w) where
       (show $ edgeLabel e)
       (show $ edgeSources e)
 
+{- | A inference rule `r` has 3 type parameters
+- `a` for rule name
+- `v` for statement
+- `w` for statement's weight
+-}
 class RuleLike r where
+  -- | Apply a rule to a list of premises, potentially output a conclusion
   consequent :: r a v w -> List v -> Maybe v
+
+  -- | Name of the rule
   ruleName :: r a v w -> a
 
-  -- premises :: e v w -> v -> Maybe (Set v)
+  -- | Deduce the weight for conclusion from weights of premises
   combination :: r a v w -> [w] -> w
+
+  -- | The number of premises
   arity :: r a v w -> Int
 
 instance RuleLike Rule where
   ruleName = name
   consequent = merge
-
-  -- premises = split
   combination = combine
   arity = nPremises
 
+{- | A chart `f` has 3 type parameters:
+- `a` for rule name
+- `v` for statement
+- `w` for statement's weight
+
+It represents the collection of proven statements.
+-}
 class Chart f where
+  -- | `out` describes how a new statement expands an existing knowledge base.
+  -- It takes a list of inference rules, a knowledge base, and a new statement
+  -- output deducable statements that utilize the new statement
   out :: (Ord v, Show v, RuleLike r, Show a) => [r a v w] -> f a v w -> v -> [HyperEdge a v w]
 
 class (Chart f) => ChartIn f where
   inEdges :: (Ord v) => f a v w -> v -> [HyperEdge a v w]
 
 data HyperGraph a v w = HyperGraph
-  { hyperEdges :: [HyperEdge a v w],
-    vertexWeights :: Map v w
+  { hyperEdges :: [HyperEdge a v w]
+  , vertexWeights :: Map v w
   }
   deriving (Show)
 
@@ -134,6 +152,7 @@ chooseN = Comb.variate
 -- >>> length$  chooseN 3 (fromList "abcdefg")
 -- 35
 
+-- | A hyper graph `f` has 3 type parameters: edge label type, vertex type, vertex weight type
 class HyperGraphLike f where
   lookUpV :: (Ord v) => f a v w -> v -> Maybe w
   addE :: (Ord v, Show v, Show a) => (v -> w -> w -> w) -> HyperEdge a v w -> f a v w -> f a v w
@@ -142,12 +161,12 @@ instance HyperGraphLike HyperGraph where
   lookUpV = (Map.!?) . vertexWeights
   addE plus e@(HyperEdge _ v f us) x =
     trace ("✨adding " ++ show e) $
-      x {hyperEdges = e : hyperEdges x, vertexWeights = Map.insert v wNew $ vertexWeights x}
-    where
-      w = f . mapMaybe (lookUpV x) $ us
-      wNew = case lookUpV x v of
-        Nothing -> w
-        Just w' -> plus v w' w
+      x{hyperEdges = e : hyperEdges x, vertexWeights = Map.insert v wNew $ vertexWeights x}
+   where
+    w = f . mapMaybe (lookUpV x) $ us
+    wNew = case lookUpV x v of
+      Nothing -> w
+      Just w' -> plus v w' w
 
 class SetLike f where
   push :: a -> f a -> f a
@@ -276,8 +295,8 @@ cykInference =
 -- [(NTChord I I,D5)]
 
 r = length $ recoverParseForest (builtCykChart testChords) goal
-  where
-    goal = IsPhrase (NTChord I I) 0 (length testChords)
+ where
+  goal = IsPhrase (NTChord I I) 0 (length testChords)
 
 testChords =
   ( (`TChord` I)
@@ -303,6 +322,6 @@ initializeChart f xs =
 
 fromTerminals :: (T a -> Int -> Item k a) -> [T a] -> [Item k a]
 fromTerminals f = fromChords' 0
-  where
-    fromChords' n [] = []
-    fromChords' n (x : xs) = f x n : fromChords' (n + 1) xs
+ where
+  fromChords' n [] = []
+  fromChords' n (x : xs) = f x n : fromChords' (n + 1) xs
